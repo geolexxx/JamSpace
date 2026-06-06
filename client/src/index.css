@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #111827;
+  color: white;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* step button active glow */
+.step-active {
+  box-shadow: 0 0 8px currentColor;
+}
