@@ -1,7 +1,7 @@
 import React from "react";
 import * as Tone from "tone";
 import type { Note } from "../spacetime/client";
-import { CELL_W } from "./BeatRuler";
+import { CELL_W, GRID_LABEL_W } from "./BeatRuler";
 
 const USER_COLORS = ["#f97316","#3b82f6","#a855f7","#22c55e","#eab308","#ec4899","#06b6d4","#f43f5e"];
 function creatorColor(hexId: string): string {
@@ -21,8 +21,6 @@ const INSTRUMENT_PITCHES: Record<string, number[]> = {
 };
 
 const BLACK_KEYS = new Set([61,63,66,68,70, 49,51,54,56,58, 73,75,78,80,82]);
-
-const LABEL_W = 36;
 
 interface Props {
   instrument:     string;
@@ -46,7 +44,7 @@ export default function StepGrid({
   const noteMap = new Map(notes.map(n => [`${n.step}-${n.pitch}`, n]));
 
   return (
-    <div style={{ width: totalSteps * CELL_W + LABEL_W }}>
+    <div style={{ width: totalSteps * CELL_W + GRID_LABEL_W }}>
       {pitches.map(pitch => {
         const isBlack = BLACK_KEYS.has(pitch);
         const label   = Tone.Frequency(pitch, "midi").toNote();
@@ -58,7 +56,7 @@ export default function StepGrid({
             <div
               className="flex-shrink-0 flex items-center justify-end pr-1.5"
               style={{
-                width: LABEL_W,
+                width: GRID_LABEL_W,
                 position: "sticky",
                 left: 196,
                 zIndex: 3,

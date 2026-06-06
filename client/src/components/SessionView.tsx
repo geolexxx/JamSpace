@@ -19,7 +19,12 @@ import type { DemoPattern } from "../audio/demos";
 const PATTERN_COLORS = ["#3b82f6","#a855f7","#22c55e","#f59e0b","#ec4899","#06b6d4","#f97316","#f43f5e"];
 const PATTERN_NAMES  = ["A","B","C","D","E","F","G","H","Chorus","Bridge","Outro","Pre-Chorus"];
 const TRACK_COLORS   = ["#f87171","#60a5fa","#a78bfa","#34d399","#fbbf24","#f472b6","#fb923c","#a3e635"];
-const INSTRUMENTS    = ["drums","bass","synth","lead"];
+const INSTRUMENT_OPTIONS = [
+  { value: "drums", emoji: "🥁", label: "Drums" },
+  { value: "bass",  emoji: "🎸", label: "Bass" },
+  { value: "synth", emoji: "🎹", label: "Synth" },
+  { value: "lead",  emoji: "🎺", label: "Lead" },
+];
 
 interface Props {
   session:     Session;
@@ -39,6 +44,16 @@ export default function SessionView({
   const [activePatternId, setActivePatternId] = useState<number | null>(null);
   const [activeTrackId,   setActiveTrackId]   = useState<number | null>(null);
   const [samplersReady,   setSamplersReady]   = useState(isSamplersReady);
+  const [showAddTrack,    setShowAddTrack]    = useState(false);
+
+  // Personal vs Sync mode (persisted in localStorage)
+  const [playbackMode, setPlaybackMode] = useState<"personal" | "sync">(
+    () => (localStorage.getItem("jamspace_mode") as "personal" | "sync") ?? "sync"
+  );
+  // Local-only play state (used in personal mode)
+  const [localPlaying, setLocalPlaying] = useState(false);
+  // Local volume overrides per trackId (personal mode only)
+  const [localVolumes, setLocalVolumes] = useState<Map<number, number>>(new Map());
 
   const notesRef           = useRef(notes);
   const tracksRef          = useRef(tracks);
@@ -59,10 +74,7 @@ export default function SessionView({
   const numBars       = activePattern?.numBars ?? 2;
   const totalSteps    = numBars * stepsPerBar;
 
-  // Keep live data fresh for scheduler
-  useEffect(() => {
-    updateLiveData(notes, tracks, arrangement, patterns, stepsPerBar);
-  }, [notes, tracks, arrangement, patterns, stepsPerBar]);
+  // liveData is kept fresh by the effectiveTracks effect below
 
   useEffect(() => {
     initSamplers();
@@ -76,40 +88,50 @@ export default function SessionView({
     }
   }, [patterns, activePatternId]);
 
-  // Playback sync
-  useEffect(() => {
-    if (session.isPlaying) {
-      ensureAudioContext().then(() => {
-        const spb = calcStepsPerBar(session.timeSigTop, session.timeSigBottom);
-        startPlayback(
-          notesRef.current,
-          tracksRef.current,
-          arrangementRef.current,
-          patternsRef.current,
-          spb,
-          session.tempoBpm,
-          session.timeSigTop,
-          session.timeSigBottom,
-          (step, blockIdx) => {
-            setActiveStep(step);
-            setActiveBlockIdx(blockIdx);
-            // Auto-follow: switch editing view to playing pattern
-            if (blockIdx >= 0) {
-              const sorted = [...arrangementRef.current].sort((a, b) => a.position - b.position);
-              const block  = sorted[blockIdx];
-              if (block && block.patternId !== activePatternIdRef.current) {
-                setActivePatternId(block.patternId);
-              }
+  const startLocalPlayback = useCallback(() => {
+    ensureAudioContext().then(() => {
+      const spb = calcStepsPerBar(session.timeSigTop, session.timeSigBottom);
+      startPlayback(
+        notesRef.current, tracksRef.current, arrangementRef.current, patternsRef.current,
+        spb, session.tempoBpm, session.timeSigTop, session.timeSigBottom,
+        (step, blockIdx) => {
+          setActiveStep(step);
+          setActiveBlockIdx(blockIdx);
+          if (blockIdx >= 0) {
+            const sorted = [...arrangementRef.current].sort((a, b) => a.position - b.position);
+            const block  = sorted[blockIdx];
+            if (block && block.patternId !== activePatternIdRef.current) {
+              setActivePatternId(block.patternId);
             }
           }
-        );
-      });
+        }
+      );
+    });
+  }, [session.timeSigTop, session.timeSigBottom, session.tempoBpm]);
+
+  // Sync mode: follow server state
+  useEffect(() => {
+    if (playbackMode !== "sync") return;
+    if (session.isPlaying) {
+      startLocalPlayback();
     } else {
       stopPlayback();
       setActiveStep(-1);
       setActiveBlockIdx(-1);
     }
-  }, [session.isPlaying]);
+  }, [session.isPlaying, playbackMode]);
+
+  // Personal mode: follow local state
+  useEffect(() => {
+    if (playbackMode !== "personal") return;
+    if (localPlaying) {
+      startLocalPlayback();
+    } else {
+      stopPlayback();
+      setActiveStep(-1);
+      setActiveBlockIdx(-1);
+    }
+  }, [localPlaying, playbackMode]);
 
   useEffect(() => {
     if (session.isPlaying) updateBpm(session.tempoBpm);
@@ -125,8 +147,12 @@ export default function SessionView({
 
   const handleTogglePlay = useCallback(async () => {
     await ensureAudioContext();
-    conn.reducers.setPlayback({ sessionId: session.sessionId, isPlaying: !session.isPlaying, tempoBpm: session.tempoBpm });
-  }, [session]);
+    if (playbackMode === "sync") {
+      conn.reducers.setPlayback({ sessionId: session.sessionId, isPlaying: !session.isPlaying, tempoBpm: session.tempoBpm });
+    } else {
+      setLocalPlaying(v => !v);
+    }
+  }, [session, playbackMode]);
 
   const handleBpmChange = useCallback((bpm: number) => {
     conn.reducers.setPlayback({ sessionId: session.sessionId, isPlaying: session.isPlaying, tempoBpm: bpm });
@@ -156,18 +182,36 @@ export default function SessionView({
   }, []);
 
   const handleVolumeChange = useCallback((trackId: number, volume: number) => {
-    conn.reducers.setVolume({ trackId, volume });
-  }, []);
+    if (playbackMode === "sync") {
+      conn.reducers.setVolume({ trackId, volume });
+    } else {
+      setLocalVolumes(prev => new Map(prev).set(trackId, volume));
+    }
+  }, [playbackMode]);
 
   const handleRemoveTrack = useCallback((trackId: number) => {
     conn.reducers.removeTrack({ trackId });
   }, []);
 
-  const handleAddTrack = useCallback(() => {
-    const instrument = INSTRUMENTS[tracks.length % INSTRUMENTS.length];
-    const color      = TRACK_COLORS[tracks.length % TRACK_COLORS.length];
+  const handleAddTrack = useCallback((instrument: string) => {
+    const color = TRACK_COLORS[tracks.length % TRACK_COLORS.length];
     conn.reducers.createTrack({ sessionId: session.sessionId, instrument, color });
+    setShowAddTrack(false);
   }, [tracks, session.sessionId]);
+
+  const handleToggleMode = useCallback(() => {
+    setPlaybackMode(m => {
+      // When switching away from sync mode, stop server playback
+      if (m === "sync" && session.isPlaying) {
+        conn.reducers.setPlayback({ sessionId: session.sessionId, isPlaying: false, tempoBpm: session.tempoBpm });
+      }
+      // When switching away from personal mode, stop local playback
+      if (m === "personal") setLocalPlaying(false);
+      const next = m === "sync" ? "personal" : "sync";
+      localStorage.setItem("jamspace_mode", next);
+      return next;
+    });
+  }, [session]);
 
   const handleLoadDemo = useCallback(async (demo: DemoPattern) => {
     if (activePatternId === null) return;
@@ -230,6 +274,22 @@ export default function SessionView({
     [notes, activePatternId]
   );
 
+  // In personal mode, apply local volume overrides to tracks for display + scheduler
+  const effectiveTracks = useMemo(() => {
+    if (playbackMode === "sync" || localVolumes.size === 0) return tracks;
+    return tracks.map(t => {
+      const lv = localVolumes.get(t.trackId);
+      return lv !== undefined ? { ...t, volume: lv } : t;
+    });
+  }, [tracks, localVolumes, playbackMode]);
+
+  // Keep scheduler in sync with effective tracks
+  useEffect(() => {
+    updateLiveData(notes, effectiveTracks, arrangement, patterns, stepsPerBar);
+  }, [notes, effectiveTracks, arrangement, patterns, stepsPerBar]);
+
+  const isEffectivelyPlaying = playbackMode === "sync" ? session.isPlaying : localPlaying;
+
   const gridContentW = totalSteps * CELL_W + 80; // extra for +bar button
 
   return (
@@ -241,17 +301,19 @@ export default function SessionView({
     >
       {/* ── Top transport bar ─────────────────────────────────────── */}
       <PlaybackControls
-        isPlaying={session.isPlaying}
+        isPlaying={isEffectivelyPlaying}
         tempoBpm={session.tempoBpm}
         sessionName={session.name}
         activeStep={activeStep}
         stepsPerBeat={stepsPerBeat}
         timeSigTop={session.timeSigTop}
         timeSigBottom={session.timeSigBottom}
+        playbackMode={playbackMode}
         onTogglePlay={handleTogglePlay}
         onBpmChange={handleBpmChange}
         onTimeSigChange={handleTimeSigChange}
         onLoadDemo={handleLoadDemo}
+        onToggleMode={handleToggleMode}
         users={users}
         tracks={tracks}
         myIdentity={myIdentity}
@@ -343,6 +405,10 @@ export default function SessionView({
           const owner      = users.find(u => u.identity.toHexString() === track.ownerIdentity.toHexString());
           const trackNotes = activeNotes.filter(n => n.trackId === track.trackId);
           const isActive   = track.trackId === activeTrackId;
+          const displayVol = playbackMode === "personal"
+            ? (localVolumes.get(track.trackId) ?? track.volume)
+            : track.volume;
+          const displayTrack = { ...track, volume: displayVol };
 
           return (
             <div
@@ -363,7 +429,7 @@ export default function SessionView({
                 }}
               >
                 <TrackHeader
-                  track={track}
+                  track={displayTrack}
                   isOwn={track.ownerIdentity.toHexString() === myIdentity}
                   ownerName={owner?.username}
                   isActive={isActive}
@@ -411,39 +477,17 @@ export default function SessionView({
 
         {/* Add track row */}
         {tracks.length < 8 && (
-          <div
-            style={{
-              display: "flex",
-              minWidth: HEADER_W + gridContentW,
-              borderBottom: "1px solid #1a1a28",
-            }}
-          >
-            <div
-              style={{
-                position: "sticky",
-                left: 0,
-                zIndex: 10,
-                width: HEADER_W,
-                flexShrink: 0,
-              }}
-            >
+          <div style={{ display: "flex", minWidth: HEADER_W + gridContentW, borderBottom: "1px solid #1a1a28" }}>
+            <div style={{ position: "relative", left: 0, zIndex: 15, width: HEADER_W, flexShrink: 0 }}>
               <button
-                onClick={handleAddTrack}
+                onClick={() => setShowAddTrack(v => !v)}
                 style={{
-                  width: HEADER_W,
-                  height: 40,
-                  backgroundColor: "#12121a",
-                  color: "#4a4a6a",
-                  border: "none",
-                  borderLeft: "3px solid #2a2a3a",
-                  cursor: "pointer",
-                  fontSize: 12,
-                  textAlign: "left",
-                  paddingLeft: 14,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  transition: "color 0.15s",
+                  width: HEADER_W, height: 40,
+                  backgroundColor: showAddTrack ? "#1a1a2a" : "#12121a",
+                  color: "#4a4a6a", border: "none",
+                  borderLeft: "3px solid #2a2a3a", cursor: "pointer",
+                  fontSize: 12, textAlign: "left" as const, paddingLeft: 14,
+                  display: "flex", alignItems: "center", gap: 8, transition: "color 0.15s",
                 }}
                 onMouseEnter={e => (e.currentTarget.style.color = "#8080b0")}
                 onMouseLeave={e => (e.currentTarget.style.color = "#4a4a6a")}
@@ -451,6 +495,36 @@ export default function SessionView({
                 <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
                 <span>Add Track</span>
               </button>
+
+              {showAddTrack && (
+                <div
+                  style={{
+                    position: "absolute", top: "100%", left: 0,
+                    backgroundColor: "#14141e", border: "1px solid #2a2a3a",
+                    borderRadius: 8, zIndex: 200, overflow: "hidden",
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.8)", minWidth: HEADER_W,
+                  }}
+                >
+                  {INSTRUMENT_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => handleAddTrack(opt.value)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        width: "100%", padding: "9px 14px",
+                        background: "none", border: "none", cursor: "pointer",
+                        fontSize: 13, textAlign: "left" as const,
+                        transition: "background-color 0.1s",
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#1e1e2e")}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
+                    >
+                      <span style={{ fontSize: 16 }}>{opt.emoji}</span>
+                      <span style={{ color: "#c0c0d8", fontWeight: 500 }}>{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

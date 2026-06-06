@@ -1,7 +1,7 @@
 import React from "react";
 import { DRUM_PADS } from "../audio/instruments";
 import type { Note } from "../spacetime/client";
-import { CELL_W } from "./BeatRuler";
+import { CELL_W, GRID_LABEL_W } from "./BeatRuler";
 
 const USER_COLORS = ["#f97316","#3b82f6","#a855f7","#22c55e","#eab308","#ec4899","#06b6d4","#f43f5e"];
 function creatorColor(hexId: string): string {
@@ -10,8 +10,7 @@ function creatorColor(hexId: string): string {
   return USER_COLORS[h % USER_COLORS.length];
 }
 
-const PAD_H  = 26;  // px per drum pad row
-const LABEL_W = 36; // px for pad name on left of each row
+const PAD_H = 26;
 
 interface Props {
   trackId:        number;
@@ -40,9 +39,9 @@ export default function DrumGrid({
           <div
             className="flex items-center gap-1 flex-shrink-0"
             style={{
-              width: LABEL_W,
+              width: GRID_LABEL_W,
               position: "sticky",
-              left: 196,  // HEADER_W
+              left: 196,
               zIndex: 3,
               backgroundColor: "#181825",
               height: "100%",
