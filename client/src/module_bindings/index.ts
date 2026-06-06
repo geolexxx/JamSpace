@@ -38,6 +38,7 @@ import AddArrangementBlockReducer from "./add_arrangement_block_reducer";
 import AddNoteReducer from "./add_note_reducer";
 import ClearNotesReducer from "./clear_notes_reducer";
 import ClearPatternNotesReducer from "./clear_pattern_notes_reducer";
+import CreateNewSessionReducer from "./create_new_session_reducer";
 import CreatePatternReducer from "./create_pattern_reducer";
 import CreateTrackReducer from "./create_track_reducer";
 import JoinSessionReducer from "./join_session_reducer";
@@ -156,6 +157,7 @@ const reducersSchema = __reducers(
   __reducerSchema("add_note", AddNoteReducer),
   __reducerSchema("clear_notes", ClearNotesReducer),
   __reducerSchema("clear_pattern_notes", ClearPatternNotesReducer),
+  __reducerSchema("create_new_session", CreateNewSessionReducer),
   __reducerSchema("create_pattern", CreatePatternReducer),
   __reducerSchema("create_track", CreateTrackReducer),
   __reducerSchema("join_session", JoinSessionReducer),

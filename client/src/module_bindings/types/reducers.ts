@@ -10,6 +10,7 @@ import AddArrangementBlockReducer from "../add_arrangement_block_reducer";
 import AddNoteReducer from "../add_note_reducer";
 import ClearNotesReducer from "../clear_notes_reducer";
 import ClearPatternNotesReducer from "../clear_pattern_notes_reducer";
+import CreateNewSessionReducer from "../create_new_session_reducer";
 import CreatePatternReducer from "../create_pattern_reducer";
 import CreateTrackReducer from "../create_track_reducer";
 import JoinSessionReducer from "../join_session_reducer";
@@ -29,6 +30,7 @@ export type AddArrangementBlockParams = __Infer<typeof AddArrangementBlockReduce
 export type AddNoteParams = __Infer<typeof AddNoteReducer>;
 export type ClearNotesParams = __Infer<typeof ClearNotesReducer>;
 export type ClearPatternNotesParams = __Infer<typeof ClearPatternNotesReducer>;
+export type CreateNewSessionParams = __Infer<typeof CreateNewSessionReducer>;
 export type CreatePatternParams = __Infer<typeof CreatePatternReducer>;
 export type CreateTrackParams = __Infer<typeof CreateTrackReducer>;
 export type JoinSessionParams = __Infer<typeof JoinSessionReducer>;

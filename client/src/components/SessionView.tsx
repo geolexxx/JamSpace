@@ -27,17 +27,18 @@ const INSTRUMENT_OPTIONS = [
 ];
 
 interface Props {
-  session:     Session;
-  tracks:      Track[];
-  notes:       Note[];
-  users:       UserPresence[];
-  patterns:    Pattern[];
-  arrangement: ArrangementBlock[];
-  myIdentity:  string;
+  session:      Session;
+  tracks:       Track[];
+  notes:        Note[];
+  users:        UserPresence[];
+  patterns:     Pattern[];
+  arrangement:  ArrangementBlock[];
+  myIdentity:   string;
+  onBackToHome: () => void;
 }
 
 export default function SessionView({
-  session, tracks, notes, users, patterns, arrangement, myIdentity,
+  session, tracks, notes, users, patterns, arrangement, myIdentity, onBackToHome,
 }: Props) {
   const [activeStep,      setActiveStep]      = useState(-1);
   const [activeBlockIdx,  setActiveBlockIdx]  = useState(-1);
@@ -221,6 +222,7 @@ export default function SessionView({
     }
     conn.reducers.setPlayback({ sessionId: session.sessionId, isPlaying: false, tempoBpm: demo.tempo });
     conn.reducers.clearPatternNotes({ patternId: activePatternId });
+    conn.reducers.setPatternBars({ patternId: activePatternId, numBars: demo.numBars ?? 1 });
     setTimeout(() => {
       for (const tp of demo.tracks) {
         const track = tracks.find(t => t.instrument === tp.instrument);
@@ -314,22 +316,12 @@ export default function SessionView({
         onTimeSigChange={handleTimeSigChange}
         onLoadDemo={handleLoadDemo}
         onToggleMode={handleToggleMode}
+        onBackToHome={onBackToHome}
         users={users}
         tracks={tracks}
         myIdentity={myIdentity}
       />
 
-      {/* ── Song arrangement strip ────────────────────────────────── */}
-      <PatternArrangement
-        patterns={patterns}
-        arrangement={arrangement}
-        activePatternId={activePatternId}
-        playingBlockIdx={activeBlockIdx}
-        onSelectPattern={handleSelectPattern}
-        onAddBlock={handleAddBlock}
-        onRemoveBlock={handleRemoveBlock}
-        onCreatePattern={handleCreatePattern}
-      />
 
       {/* Loading banner */}
       {!samplersReady && (
@@ -380,7 +372,7 @@ export default function SessionView({
                   style={{ backgroundColor: activePattern.color }}
                 />
                 <span style={{ fontSize: 10, color: "#7070a0", fontWeight: 600 }}>
-                  {activePattern.name} · {numBars} bar{numBars !== 1 ? "s" : ""}
+                  Song · {numBars} bar{numBars !== 1 ? "s" : ""}
                 </span>
               </>
             )}

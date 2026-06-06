@@ -160,6 +160,38 @@ pub fn remove_track(ctx: &ReducerContext, track_id: u32) -> Result<(), String> {
     Ok(())
 }
 
+/// Creates a brand-new session with default tracks + patterns (anyone can call this).
+#[reducer]
+pub fn create_new_session(ctx: &ReducerContext, name: String) {
+    let session = ctx.db.session().insert(Session {
+        session_id: 0, name, tempo_bpm: 120, is_playing: false,
+        current_beat: 0.0, time_sig_top: 4, time_sig_bottom: 4,
+    });
+    for (instrument, color) in [
+        ("drums", "#f87171"), ("bass", "#60a5fa"),
+        ("synth", "#a78bfa"), ("lead", "#34d399"),
+    ] {
+        ctx.db.track().insert(Track {
+            track_id: 0, session_id: session.session_id,
+            instrument: instrument.to_string(), owner_identity: ctx.sender,
+            color: color.to_string(), is_muted: false, volume: 1.0,
+        });
+    }
+    let mut pids = Vec::new();
+    for (pname, color) in [("Intro", "#3b82f6"), ("Verse", "#a855f7")] {
+        let p = ctx.db.pattern().insert(Pattern {
+            pattern_id: 0, session_id: session.session_id,
+            name: pname.to_string(), color: color.to_string(), num_bars: 2,
+        });
+        pids.push(p.pattern_id);
+    }
+    for (pos, pid) in [(0u32, pids[0]), (1u32, pids[1])] {
+        ctx.db.arrangement_block().insert(ArrangementBlock {
+            block_id: 0, session_id: session.session_id, pattern_id: pid, position: pos,
+        });
+    }
+}
+
 #[reducer]
 pub fn create_pattern(ctx: &ReducerContext, session_id: u32, name: String, color: String) {
     ctx.db.pattern().insert(Pattern { pattern_id: 0, session_id, name, color, num_bars: 2 });
