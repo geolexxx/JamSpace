@@ -13,10 +13,12 @@ interface Props {
   users:           UserPresence[];
   tracks:          Track[];
   myIdentity:      string;
+  playbackMode:    "personal" | "sync";
   onTogglePlay:    () => void;
   onBpmChange:     (bpm: number) => void;
   onTimeSigChange: (top: number, bottom: number) => void;
   onLoadDemo:      (demo: DemoPattern) => void;
+  onToggleMode:    () => void;
 }
 
 const TIME_SIGS = [
@@ -37,7 +39,7 @@ function userColor(hexId: string) {
 export default function PlaybackControls({
   isPlaying, tempoBpm, sessionName, activeStep, stepsPerBeat,
   timeSigTop, timeSigBottom, users, tracks, myIdentity,
-  onTogglePlay, onBpmChange, onTimeSigChange, onLoadDemo,
+  playbackMode, onTogglePlay, onBpmChange, onTimeSigChange, onLoadDemo, onToggleMode,
 }: Props) {
   const [showDemoMenu, setShowDemoMenu]   = useState(false);
   const [showTimeSig,  setShowTimeSig]    = useState(false);
@@ -76,7 +78,8 @@ export default function PlaybackControls({
         borderBottom: "1px solid #2a2a3a",
         flexShrink: 0,
         flexWrap: "nowrap",
-        overflow: "hidden",
+        position: "relative",
+        zIndex: 50,
       }}
     >
       {/* Logo / session name */}
@@ -207,6 +210,24 @@ export default function PlaybackControls({
         )}
       </div>
 
+      {/* Personal / Sync mode toggle */}
+      <button
+        onClick={onToggleMode}
+        title={playbackMode === "personal" ? "Personal mode: play & volume only affect you" : "Sync mode: play & volume sync to everyone"}
+        style={{
+          display: "flex", alignItems: "center", gap: 5,
+          padding: "4px 10px", borderRadius: 6, cursor: "pointer",
+          backgroundColor: playbackMode === "personal" ? "#1a2a1a" : "#1a1a2e",
+          color: playbackMode === "personal" ? "#4ade80" : "#818cf8",
+          border: `1px solid ${playbackMode === "personal" ? "#166534" : "#3730a3"}`,
+          fontSize: 11, fontWeight: 600, flexShrink: 0,
+          transition: "all 0.15s",
+        }}
+      >
+        <span style={{ fontSize: 12 }}>{playbackMode === "personal" ? "🎧" : "🔗"}</span>
+        {playbackMode === "personal" ? "Personal" : "Sync"}
+      </button>
+
       {/* Spacer */}
       <div style={{ flex: 1 }} />
 
@@ -293,8 +314,8 @@ const microBtn: React.CSSProperties = {
 const dropdown: React.CSSProperties = {
   position: "absolute", top: "100%", left: 0, marginTop: 4,
   backgroundColor: "#16161e", border: "1px solid #2a2a3a",
-  borderRadius: 8, boxShadow: "0 12px 40px rgba(0,0,0,0.6)",
-  zIndex: 100, overflow: "hidden",
+  borderRadius: 8, boxShadow: "0 12px 40px rgba(0,0,0,0.8)",
+  zIndex: 300, overflow: "hidden",
 };
 
 const dropItem: React.CSSProperties = {

@@ -161,14 +161,14 @@ export default function PatternArrangement({
           <div
             style={{
               position: "absolute",
-              bottom: "calc(100% + 6px)",
+              top: "calc(100% + 6px)",
               right: 0,
               backgroundColor: "#14141e",
               border: "1px solid #2a2a3a",
               borderRadius: 8,
-              boxShadow: "0 8px 32px rgba(0,0,0,0.7)",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.8)",
               minWidth: 140,
-              zIndex: 50,
+              zIndex: 200,
               overflow: "hidden",
             }}
           >

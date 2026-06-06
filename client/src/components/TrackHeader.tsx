@@ -43,7 +43,19 @@ export default function TrackHeader({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Top row: icon + name + mute + remove */}
+      {/* Remove button — always visible at top-right */}
+      <button
+        onClick={e => { e.stopPropagation(); onRemove(); }}
+        className="absolute flex items-center justify-center transition"
+        style={{ top: 4, right: 4, width: 14, height: 14, borderRadius: 3, backgroundColor: "#1a1a28", color: "#3a3a5a", fontSize: 8, border: "1px solid #2a2a3a" }}
+        onMouseEnter={e => { e.currentTarget.style.color = "#f87171"; e.currentTarget.style.backgroundColor = "#2a1a1a"; }}
+        onMouseLeave={e => { e.currentTarget.style.color = "#3a3a5a"; e.currentTarget.style.backgroundColor = "#1a1a28"; }}
+        title="Remove track"
+      >
+        ✕
+      </button>
+
+      {/* Top row: icon + name + mute */}
       <div className="flex items-center gap-2 mb-1.5">
         <span className="text-base leading-none flex-shrink-0">{cfg.emoji}</span>
         <div className="flex-1 min-w-0">
@@ -69,20 +81,6 @@ export default function TrackHeader({
         >
           M
         </button>
-
-        {/* Remove button (only shows on hover) */}
-        {hovered && (
-          <button
-            onClick={e => { e.stopPropagation(); onRemove(); }}
-            className="w-5 h-5 rounded flex items-center justify-center transition flex-shrink-0"
-            style={{ backgroundColor: "#1a1a28", color: "#4a4a5a", fontSize: 10 }}
-            onMouseEnter={e => (e.currentTarget.style.color = "#f87171")}
-            onMouseLeave={e => (e.currentTarget.style.color = "#4a4a5a")}
-            title="Remove track"
-          >
-            ✕
-          </button>
-        )}
       </div>
 
       {/* Volume slider */}
