@@ -363,88 +363,60 @@ Little Star”</strong>, built live and collaboratively.</p>
 <p><strong>Host A:</strong> “Hi everyone! We’re excited to show you
 JamSpace — a real-time multiplayer music sequencer where multiple people
 can produce a track together, live, from anywhere in the world.”</p>
-<p><strong>Host B:</strong> “Built for the SpacetimeDB Launchpad
-Hackathon during NY Tech Week, JamSpace turns music-making into a
-shared, collaborative experience — like Google Docs, but for beats.”</p>
+<p><strong>Host B:</strong> “JamSpace turns music-making into a shared,
+collaborative experience — like Google Docs, but for beats.”</p>
 <p><em>[Action: Show the landing page — animated EQ bars, floating music
 notes, the JamSpace logo.]</em></p>
 <hr />
 </div>
 <div id="backend-powered-by-spacetimedb" class="section level2">
-<h2>[0:25 – 1:25] BACKEND — POWERED BY SPACETIMEDB</h2>
+<h2>[0:25 – 1:15] BACKEND — POWERED BY SPACETIMEDB</h2>
 <p><strong>Host A:</strong> “Everything you’re about to see is powered
 entirely by SpacetimeDB — a database that runs your backend logic AND
-keeps every client in sync in real time, with no extra server, no REST
-API, and no custom WebSocket code to write.”</p>
-<p><em>[Action: Open <code>server/src/lib.rs</code>. Scroll to the top,
-the “Tables” section, lines 5–63.]</em></p>
-<p><strong>Host B:</strong> “Our entire data model lives in one Rust
-file. Six tables: <code>Session</code> holds the project’s tempo, time
-signature, and play state. <code>Track</code> represents an instrument —
-drums, bass, synth, or lead — owned by whoever created it.
-<code>Pattern</code> is a reusable block of music, and
-<code>ArrangementBlock</code> places patterns into a song timeline.
-<code>Note</code> stores every single note — its step, pitch, velocity,
-and now also its <strong>duration</strong>, which we just added. And
-<code>UserPresence</code> tracks who’s online, in which session, in real
-time.”</p>
-<p><em>[Action: Slowly highlight each <code>#[table(...)]</code> struct
-as you name it — <code>Session</code> (line 6), <code>Track</code> (line
-17), <code>Pattern</code> (line 28), <code>ArrangementBlock</code> (line
-37), <code>Note</code> (line 45), <code>UserPresence</code> (line
-57).]</em></p>
-<p><strong>Host A:</strong> “Every table is marked <code>public</code>,
-which means SpacetimeDB automatically replicates it to every subscribed
-client — that’s the entire ‘real-time sync’ layer, declared in a single
-attribute.”</p>
-<p><em>[Action: Point at the <code>#[table(name = note, public)]</code>
-line just above the <code>Note</code> struct, line 44.]</em></p>
-<p><strong>Host B:</strong> “Now, how do clients actually change the
-data? Through ‘reducers’ — plain Rust functions marked
-<code>#[reducer]</code>, starting around line 67. For example,
-<code>add_note</code> takes a pattern ID, track ID, step, pitch,
-velocity, and duration, checks there isn’t already a note at that spot,
-and inserts a new row directly into the <code>note</code> table.”</p>
-<p><em>[Action: Scroll to the <code>add_note</code> reducer (around line
-230) and walk through it line by line.]</em></p>
-<p><strong>Host A:</strong> “And <code>set_playback</code> is what keeps
-everyone’s transport in sync — when one person hits play or changes the
-tempo, this reducer updates the shared <code>Session</code> row, and
-that single update instantly fans out to every connected client.”</p>
-<p><em>[Action: Scroll to the <code>set_playback</code> reducer (around
-line 287).]</em></p>
-<p><strong>Host B:</strong> “On the client side, we connect with
-<code>buildConnection</code> in
-<code>client/src/spacetime/client.ts</code>, and subscribe to exactly
-the tables we care about — sessions, tracks, patterns, notes,
-arrangement blocks, and presence — using SQL-like subscription
-queries.”</p>
-<p><em>[Action: Open <code>client/src/App.tsx</code>, show the
-<code>SUBSCRIBE_QUERIES</code> array (lines 7–14) and the
-<code>subscriptionBuilder().onApplied(...).subscribe(...)</code> call
-(lines 121–131).]</em></p>
-<p><strong>Host A:</strong> “From there, every insert, update, and
-delete on those tables streams to us over a WebSocket automatically — we
-just register callbacks like <code>onInsert</code> and
-<code>onUpdate</code>, and React state updates itself. So the moment I
-call <code>add_note</code> on my machine, SpacetimeDB pushes that row to
-Host B’s client, their <code>onInsert</code> callback fires, and the
-note appears on their screen — typically in well under 100
-milliseconds.”</p>
-<p><em>[Action: Briefly show the <code>c.db.note.onInsert(...)</code>
-callback in <code>App.tsx</code> (around line 93).]</em></p>
-<p><strong>Host B:</strong> “And deploying changes is just one command
-from the <code>server/</code> folder:
-<code>spacetime publish --yes jamspace</code>. SpacetimeDB compiles our
-Rust module to WebAssembly, uploads it, and it’s live — that’s our
-entire backend deployment pipeline.”</p>
+keeps every client in sync in real time, with no extra server and no
+custom networking code to write.”</p>
+<p><em>[Action: Open <code>server/src/lib.rs</code>, scroll to the
+“Tables” section, lines 5–63.]</em></p>
+<p><strong>Host B:</strong> “Our whole data model lives in one Rust file
+— six tables: <code>Session</code>, <code>Track</code>,
+<code>Pattern</code>, <code>ArrangementBlock</code>, <code>Note</code>,
+and <code>UserPresence</code>. Each one is marked <code>public</code>,
+which means SpacetimeDB automatically replicates every row to every
+connected client — that’s our entire real-time-sync layer, declared with
+a single attribute.”</p>
+<p><em>[Action: Briefly point at each <code>#[table(...)]</code> struct
+— lines 6, 17, 28, 37, 45, 57 — then highlight the <code>public</code>
+keyword on line 44.]</em></p>
+<p><strong>Host A:</strong> “Every action — adding a note, muting a
+track — runs through a ‘reducer’: a Rust function marked
+<code>#[reducer]</code> that updates the database. Here’s
+<code>add_note</code> — it checks there isn’t already a note at that
+spot, then inserts a new row into the <code>note</code> table, including
+the <code>duration</code> field.”</p>
+<p><em>[Action: Scroll to the <code>add_note</code> reducer, lines
+230–241, and briefly walk through it.]</em></p>
+<p><strong>Host B:</strong> “On the client, we connect and subscribe to
+exactly the tables we need with SQL-like queries. From there, every
+insert and update streams to us over a WebSocket automatically — we just
+register a callback like <code>onInsert</code>, and React updates
+itself. The moment I add a note, it appears on Host A’s screen instantly
+— typically in well under 100 milliseconds, with zero custom networking
+code.”</p>
+<p><em>[Action: Show <code>SUBSCRIBE_QUERIES</code> in
+<code>client/src/App.tsx</code> (lines 7–14) and the
+<code>c.db.note.onInsert(...)</code> callback (around line
+93).]</em></p>
+<p><strong>Host A:</strong> “And shipping a backend change is just one
+command — <code>spacetime publish</code> — which compiles our Rust
+module to WebAssembly and deploys it live. That’s our entire backend
+pipeline.”</p>
 <p><em>[Action: Quick terminal shot running
 <code>spacetime publish --yes jamspace</code> from the
 <code>server/</code> directory.]</em></p>
 <hr />
 </div>
 <div id="frontend-live-collaboration-demo" class="section level2">
-<h2>[1:10 – 3:00] FRONTEND — LIVE COLLABORATION DEMO</h2>
+<h2>[1:15 – 3:00] FRONTEND — LIVE COLLABORATION DEMO</h2>
 <p><strong>Host B:</strong> “Let’s see it in action — we’re going to
 write ‘Twinkle Twinkle Little Star’ together, live, from two different
 computers.”</p>
@@ -462,12 +434,11 @@ transport bar.]</em></p>
 Drums track and tap out a simple kick-and-snare pattern on the drum
 grid.” <em>[Action: Host B clicks pads on the drum grid to build a
 beat.]</em></p>
-<p><strong>Host A:</strong> “And I’ll add the melody. JamSpace just
-shipped note duration — I can click and drag across the grid to make
-notes longer, perfect for holding out the long notes in ‘Twinkle
-Twinkle’.” <em>[Action: Host A drags across cells on the synth/lead
-track to create held notes for “Twin-kle, twin-kle, lit-tle
-star.”]</em></p>
+<p><strong>Host A:</strong> “And I’ll add the melody. I can click and
+drag across the grid to make notes longer, perfect for holding out the
+long notes in ‘Twinkle Twinkle’.” <em>[Action: Host A drags across cells
+on the synth/lead track to create held notes for “Twin-kle, twin-kle,
+lit-tle star.”]</em></p>
 <p><strong>Host B:</strong> “Watch — the moment Host A places a note, it
 appears on my screen instantly, in their own color, with a tooltip
 showing exactly who created it.” <em>[Action: Zoom in on the note
@@ -547,17 +518,6 @@ UserPresence: 57)</td>
 <td>The <code>add_note</code> reducer (validates + inserts a
 <code>Note</code> row, now with <code>duration</code>)</td>
 <td><code>server/src/lib.rs</code>, lines <strong>230–241</strong></td>
-</tr>
-<tr class="even">
-<td>“<code>set_note_duration</code> lets you resize a note after the
-fact” <em>(optional extra beat)</em></td>
-<td>The new reducer added for the duration feature</td>
-<td><code>server/src/lib.rs</code>, lines <strong>243–248</strong></td>
-</tr>
-<tr class="odd">
-<td>“<code>set_playback</code>… keeps everyone’s transport in sync”</td>
-<td>The <code>set_playback</code> reducer</td>
-<td><code>server/src/lib.rs</code>, lines <strong>286–293</strong></td>
 </tr>
 <tr class="even">
 <td>“We connect with <code>buildConnection</code>…”</td>
@@ -672,74 +632,47 @@ Docs，但用来做音乐。”</p>
 <hr />
 </div>
 <div id="后端-由-spacetimedb-驱动" class="section level2">
-<h2>[0:25 – 1:25] 后端 —— 由 SpacetimeDB 驱动</h2>
+<h2>[0:25 – 1:15] 后端 —— 由 SpacetimeDB 驱动</h2>
 <p><strong>主持人 A：</strong> “你接下来看到的一切，完全是由 SpacetimeDB
 驱动的 ——
-它是一个数据库，既能运行你的后端逻辑，又能让所有客户端实时保持同步，不需要额外搭建服务器，不需要写
-REST API，更不需要自己写任何 WebSocket 同步代码。”</p>
-<p><em>【画面动作：打开 <code>server/src/lib.rs</code>，滚动到顶部
-“Tables” 部分，第 5–63 行。】</em></p>
-<p><strong>主持人 B：</strong> “我们整个数据模型都写在一个 Rust
-文件里。一共六张表：<code>Session</code>（会话）保存项目的速度、拍号和播放状态；<code>Track</code>（音轨）代表一件乐器
+它是一个数据库，既能运行你的后端逻辑，又能让所有客户端实时保持同步，不需要额外搭建服务器，也不需要自己写任何网络同步代码。”</p>
+<p><em>【画面动作：打开 <code>server/src/lib.rs</code>，滚动到 “Tables”
+部分，第 5–63 行。】</em></p>
+<p><strong>主持人 B：</strong> “我们整个数据模型都写在一个 Rust 文件里
 ——
-鼓、贝斯、合成器或主奏，归属于创建它的人；<code>Pattern</code>（模式）是一段可复用的音乐片段，<code>ArrangementBlock</code>（编排块）则把这些模式排列进歌曲的时间线；<code>Note</code>（音符）存储每一个音符的位置、音高、力度，现在还多了一个我们刚加上的字段
-—— <strong>时长（duration）</strong>；最后
-<code>UserPresence</code>（用户在线状态）实时记录谁在线、在哪个会话里。”</p>
-<p><em>【画面动作：依次高亮每一个 <code>#[table(...)]</code>
-结构体，边讲边指：<code>Session</code>（第 6
-行）、<code>Track</code>（第 17 行）、<code>Pattern</code>（第 28
-行）、<code>ArrangementBlock</code>（第 37 行）、<code>Note</code>（第
-45 行）、<code>UserPresence</code>（第 57 行）。】</em></p>
-<p><strong>主持人 A：</strong> “每张表都标记为
+一共六张表：<code>Session</code>、<code>Track</code>、<code>Pattern</code>、<code>ArrangementBlock</code>、<code>Note</code>、<code>UserPresence</code>。每一张都标记为
 <code>public</code>，这意味着 SpacetimeDB
-会自动把它同步到所有订阅的客户端 ——
-整个『实时同步』机制，其实就是这样一个属性标记搞定的。”</p>
-<p><em>【画面动作：指向 <code>Note</code> 结构体上方的
-<code>#[table(name = note, public)]</code>，第 44 行。】</em></p>
-<p><strong>主持人 B：</strong>
-“那客户端要怎么修改数据呢？答案是『reducer』 —— 一种用
-<code>#[reducer]</code> 标记的普通 Rust 函数，从第 67 行开始。比如
-<code>add_note</code>：它接收模式 ID、音轨
-ID、步进位置、音高、力度和时长，先检查这个位置是否已经有音符，然后直接往
-<code>note</code> 表里插入一行新数据。”</p>
-<p><em>【画面动作：滚动到 <code>add_note</code> reducer（约第 230
-行），逐行讲解。】</em></p>
-<p><strong>主持人 A：</strong> “<code>set_playback</code>
-则负责让所有人的播放状态保持一致 —— 当有人按下播放键或修改速度时，这个
-reducer 会更新共享的 <code>Session</code>
-数据行，而这一次更新会瞬间同步推送给所有连接的客户端。”</p>
-<p><em>【画面动作：滚动到 <code>set_playback</code> reducer（约第 287
-行）。】</em></p>
-<p><strong>主持人 B：</strong> “在客户端这边，我们用
-<code>client/src/spacetime/client.ts</code> 里的
-<code>buildConnection</code> 建立连接，然后用类似 SQL
-的订阅查询语句，精确订阅我们关心的几张表 ——
-会话、音轨、模式、音符、编排块和在线状态。”</p>
-<p><em>【画面动作：打开 <code>client/src/App.tsx</code>，展示
+会自动把每一行数据同步到所有连接的客户端 ——
+整个『实时同步』机制，就是靠这一个属性标记搞定的。”</p>
+<p><em>【画面动作：依次指向六个 <code>#[table(...)]</code> 结构体（第
+6、17、28、37、45、57 行），再高亮第 44 行的 <code>public</code>
+关键字。】</em></p>
+<p><strong>主持人 A：</strong> “每一个操作 ——
+添加音符、改变速度、静音音轨 —— 都通过『reducer』来完成：一种用
+<code>#[reducer]</code> 标记的 Rust 函数，能原子化地更新数据库。比如这个
+<code>add_note</code>：它会先检查这个位置是否已经有音符，然后把新的一行数据
+—— 包括我们刚上线的 <code>duration</code> 字段 —— 直接插入到
+<code>note</code> 表里。”</p>
+<p><em>【画面动作：滚动到 <code>add_note</code> reducer，第 230–241
+行，简单讲解一下。】</em></p>
+<p><strong>主持人 B：</strong> “在客户端这边，我们用类似 SQL
+的查询语句，精确订阅自己需要的那几张表。从那以后，这些表上的每一次插入、更新都会自动通过
+WebSocket 实时推送给我们 —— 我们只需要注册像 <code>onInsert</code>
+这样的回调函数，React
+的状态就会自动更新。我一添加音符，它就立刻出现在主持人 A 的屏幕上 ——
+通常不到 100 毫秒，而且完全不需要写任何网络同步代码。”</p>
+<p><em>【画面动作：展示 <code>client/src/App.tsx</code> 中的
 <code>SUBSCRIBE_QUERIES</code> 数组（第 7–14 行）以及
-<code>subscriptionBuilder().onApplied(...).subscribe(...)</code>
-调用（第 121–131 行）。】</em></p>
-<p><strong>主持人 A：</strong>
-“从那一刻起，这些表上的每一次插入、更新、删除都会自动通过 WebSocket
-实时推送给我们 —— 我们只需要注册像
-<code>onInsert</code>、<code>onUpdate</code> 这样的回调函数，React
-的状态就会自动更新。所以我在我的电脑上调用 <code>add_note</code>
-的瞬间，SpacetimeDB 就会把这条新数据推送到主持人 B 的客户端，他的
-<code>onInsert</code> 回调被触发，音符就出现在他的屏幕上了 ——
-整个过程通常不到 100 毫秒。”</p>
-<p><em>【画面动作：简单展示 <code>App.tsx</code> 中的
-<code>c.db.note.onInsert(...)</code> 实时回调（约第 93 行）。】</em></p>
-<p><strong>主持人 B：</strong> “而部署后端改动也只需要在
-<code>server/</code>
-目录下执行一条命令：<code>spacetime publish --yes jamspace</code>。SpacetimeDB
-会把我们的 Rust 模块编译成 WebAssembly，上传并立即生效 ——
-这就是我们整个后端的部署流程。”</p>
+<code>c.db.note.onInsert(...)</code> 回调（约第 93 行）。】</em></p>
+<p><strong>主持人 A：</strong> “而部署后端改动只需要一条命令 ——
+<code>spacetime publish</code> —— 它会把我们的 Rust 模块编译成
+WebAssembly 并立即上线。这就是我们整个后端的部署流程。”</p>
 <p><em>【画面动作：快速展示在 <code>server/</code> 目录下执行
 <code>spacetime publish --yes jamspace</code> 的终端画面。】</em></p>
 <hr />
 </div>
 <div id="前端功能-实时协作演示" class="section level2">
-<h2>[1:10 – 3:00] 前端功能 —— 实时协作演示</h2>
+<h2>[1:15 – 3:00] 前端功能 —— 实时协作演示</h2>
 <p><strong>主持人 B：</strong> “让我们实际操作一下 ——
 我们将在两台不同的电脑上，现场一起合作完成《小星星》这首曲子。”</p>
 <p><strong>主持人 A：</strong> “我先创建一个名为 ‘Twinkle Twinkle’
@@ -832,17 +765,6 @@ Home”，展示会话列表中包含刚创建的 ‘Twinkle Twinkle’ 项目�
 <td><code>add_note</code> reducer（校验后插入一行
 <code>Note</code>，现在带有 <code>duration</code> 参数）</td>
 <td><code>server/src/lib.rs</code>，第 <strong>230–241</strong> 行</td>
-</tr>
-<tr class="even">
-<td>“<code>set_note_duration</code>
-可以在创建之后调整音符长度”（<em>可选补充内容</em>）</td>
-<td>为时长功能新增的 reducer</td>
-<td><code>server/src/lib.rs</code>，第 <strong>243–248</strong> 行</td>
-</tr>
-<tr class="odd">
-<td>“<code>set_playback</code>……让所有人的播放状态保持一致”</td>
-<td><code>set_playback</code> reducer</td>
-<td><code>server/src/lib.rs</code>，第 <strong>286–293</strong> 行</td>
 </tr>
 <tr class="even">
 <td>“我们用 <code>buildConnection</code> 建立连接……”</td>
