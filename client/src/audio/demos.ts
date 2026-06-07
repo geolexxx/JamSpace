@@ -2,7 +2,7 @@
 // Step grid: 4/4 time, 16 steps per bar, 4 steps per beat (16th notes).
 // Bar 1: 0–15 | Bar 2: 16–31 | Bar 3: 32–47 | Bar 4: 48–63
 
-export interface DemoNote { step: number; pitch: number; velocity: number; }
+export interface DemoNote { step: number; pitch: number; velocity: number; duration?: number; }
 export interface DemoTrackPattern { instrument: string; notes: DemoNote[]; }
 export interface DemoPattern {
   name: string; description: string; tempo: number; numBars: number;

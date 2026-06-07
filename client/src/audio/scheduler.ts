@@ -93,6 +93,7 @@ export function startPlayback(
     const allIdx = allSorted.findIndex(b => b.blockId === block.blockId);
 
     // Trigger notes
+    const stepDuration = Tone.Time("16n").toSeconds();
     for (const note of liveData.notes) {
       if (note.patternId !== block.patternId || note.step !== localStep) continue;
       const track = liveData.tracks.find(t => t.trackId === note.trackId);
@@ -102,7 +103,7 @@ export function startPlayback(
       if (track.instrument === "drums") {
         triggerDrum(note.pitch, vel, time);
       } else {
-        triggerMelody(track.instrument as any, note.pitch, vel, time);
+        triggerMelody(track.instrument as any, note.pitch, vel, time, note.duration * stepDuration);
       }
     }
 

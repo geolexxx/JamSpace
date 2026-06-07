@@ -25,6 +25,7 @@ export const Note = __t.object("Note", {
   step: __t.u16(),
   pitch: __t.u8(),
   velocity: __t.u8(),
+  duration: __t.u16(),
   creatorIdentity: __t.identity(),
 });
 export type Note = __Infer<typeof Note>;

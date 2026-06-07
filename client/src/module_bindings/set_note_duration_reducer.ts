@@ -10,13 +10,7 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default __t.row({
-  noteId: __t.u32().primaryKey().name("note_id"),
-  patternId: __t.u32().name("pattern_id"),
-  trackId: __t.u32().name("track_id"),
-  step: __t.u16(),
-  pitch: __t.u8(),
-  velocity: __t.u8(),
+export default {
+  noteId: __t.u32(),
   duration: __t.u16(),
-  creatorIdentity: __t.identity().name("creator_identity"),
-});
+};

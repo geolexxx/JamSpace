@@ -46,9 +46,10 @@ pub struct Note {
     #[primary_key] #[auto_inc] pub note_id: u32,
     #[index(btree)] pub pattern_id: u32,
     #[index(btree)] pub track_id: u32,
-    pub step: u16,   // u16 supports up to 65535 steps (4000+ bars)
+    pub step: u16,
     pub pitch: u8,
     pub velocity: u8,
+    pub duration: u16,  // in steps; 1 = one 16th note
     pub creator_identity: Identity,
 }
 
@@ -227,15 +228,23 @@ pub fn remove_arrangement_block(ctx: &ReducerContext, block_id: u32) {
 }
 
 #[reducer]
-pub fn add_note(ctx: &ReducerContext, pattern_id: u32, track_id: u32, step: u16, pitch: u8, velocity: u8) {
+pub fn add_note(ctx: &ReducerContext, pattern_id: u32, track_id: u32, step: u16, pitch: u8, velocity: u8, duration: u16) {
+    let duration = duration.max(1);
     let exists = ctx.db.note().pattern_id().filter(&pattern_id)
         .any(|n| n.track_id == track_id && n.step == step && n.pitch == pitch);
     if !exists {
         ctx.db.note().insert(Note {
-            note_id: 0, pattern_id, track_id, step, pitch, velocity,
+            note_id: 0, pattern_id, track_id, step, pitch, velocity, duration,
             creator_identity: ctx.sender,
         });
     }
+}
+
+#[reducer]
+pub fn set_note_duration(ctx: &ReducerContext, note_id: u32, duration: u16) -> Result<(), String> {
+    let note = ctx.db.note().note_id().find(&note_id).ok_or("Note not found")?;
+    ctx.db.note().note_id().update(Note { duration: duration.max(1), ..note });
+    Ok(())
 }
 
 #[reducer]

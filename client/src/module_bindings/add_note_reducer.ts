@@ -16,4 +16,5 @@ export default {
   step: __t.u16(),
   pitch: __t.u8(),
   velocity: __t.u8(),
+  duration: __t.u16(),
 };

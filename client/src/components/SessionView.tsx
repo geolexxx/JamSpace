@@ -174,8 +174,18 @@ export default function SessionView({
     if (exists) {
       conn.reducers.removeNote({ patternId: activePatternId, trackId, step, pitch });
     } else {
-      conn.reducers.addNote({ patternId: activePatternId, trackId, step, pitch, velocity: 100 });
+      conn.reducers.addNote({ patternId: activePatternId, trackId, step, pitch, velocity: 100, duration: 1 });
     }
+  }, [activePatternId]);
+
+  const handleAddNote = useCallback((trackId: number) => (step: number, pitch: number, duration: number) => {
+    if (activePatternId === null) return;
+    conn.reducers.addNote({ patternId: activePatternId, trackId, step, pitch, velocity: 100, duration });
+  }, [activePatternId]);
+
+  const handleRemoveNote = useCallback((trackId: number) => (step: number, pitch: number) => {
+    if (activePatternId === null) return;
+    conn.reducers.removeNote({ patternId: activePatternId, trackId, step, pitch });
   }, [activePatternId]);
 
   const handleToggleMute = useCallback((trackId: number) => {
@@ -234,6 +244,7 @@ export default function SessionView({
             step: note.step,
             pitch: note.pitch,
             velocity: note.velocity,
+            duration: note.duration ?? 1,
           });
         }
       }
@@ -459,7 +470,8 @@ export default function SessionView({
                     stepsPerBeat={stepsPerBeat}
                     myIdentity={myIdentity}
                     identityToName={identityToName}
-                    onToggle={handleToggleNote(track.trackId)}
+                    onAddNote={handleAddNote(track.trackId)}
+                    onRemoveNote={handleRemoveNote(track.trackId)}
                   />
                 )}
               </div>

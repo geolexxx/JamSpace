@@ -120,9 +120,10 @@ export function playCrash(time: number, vel: number) {
 }
 
 // ── Bass synthesis (Web Audio API — no CDN needed, always works) ──────────────
-export function playBass(pitch: number, vel: number, time: number) {
+export function playBass(pitch: number, vel: number, time: number, durationSec = 0.75) {
   const c = ctx(); const v = vel / 127;
   const freq = Tone.Frequency(pitch, "midi").toFrequency();
+  const hold = Math.max(0.12, durationSec);
 
   // Sub sine — the low body
   const sub = c.createOscillator(); const subGain = c.createGain();
@@ -130,8 +131,9 @@ export function playBass(pitch: number, vel: number, time: number) {
   sub.connect(subGain); subGain.connect(c.destination);
   subGain.gain.setValueAtTime(v * 1.4, time);
   subGain.gain.exponentialRampToValueAtTime(v * 0.6, time + 0.06);
-  subGain.gain.exponentialRampToValueAtTime(0.001, time + 0.75);
-  sub.start(time); sub.stop(time + 0.76);
+  subGain.gain.linearRampToValueAtTime(v * 0.6, time + hold);
+  subGain.gain.exponentialRampToValueAtTime(0.001, time + hold + 0.08);
+  sub.start(time); sub.stop(time + hold + 0.09);
 
   // Sawtooth through lowpass — string/pick character
   const saw = c.createOscillator(); saw.type = "sawtooth"; saw.frequency.value = freq;
@@ -144,8 +146,9 @@ export function playBass(pitch: number, vel: number, time: number) {
   saw.connect(lp); lp.connect(sawGain); sawGain.connect(c.destination);
   sawGain.gain.setValueAtTime(v * 0.5, time);
   sawGain.gain.exponentialRampToValueAtTime(v * 0.25, time + 0.08);
-  sawGain.gain.exponentialRampToValueAtTime(0.001, time + 0.65);
-  saw.start(time); saw.stop(time + 0.66);
+  sawGain.gain.linearRampToValueAtTime(v * 0.25, time + hold);
+  sawGain.gain.exponentialRampToValueAtTime(0.001, time + hold + 0.08);
+  saw.start(time); saw.stop(time + hold + 0.09);
 
   // Click transient for pluck attack
   const click = c.createOscillator(); click.type = "square"; click.frequency.value = freq * 3;
@@ -242,14 +245,14 @@ export function triggerDrum(pitch: number, velocity: number, time = Tone.now()) 
   }
 }
 
-export function triggerMelody(instrument: InstrumentType, pitch: number, velocity: number, time = Tone.now()) {
+export function triggerMelody(instrument: InstrumentType, pitch: number, velocity: number, time = Tone.now(), durationSec = 0.5) {
   const note = Tone.Frequency(pitch, "midi").toNote();
   const vol  = velocity / 127;
   try {
     switch (instrument) {
-      case "bass":  playBass(pitch, velocity, time); break;  // Web Audio synthesis — always works
-      case "synth": _piano?.triggerAttackRelease(note, "8n", time, vol); break;
-      case "lead":  _lead?.triggerAttackRelease(note, "8n", time, vol);  break;
+      case "bass":  playBass(pitch, velocity, time, durationSec); break;
+      case "synth": _piano?.triggerAttackRelease(note, durationSec, time, vol); break;
+      case "lead":  _lead?.triggerAttackRelease(note, durationSec, time, vol);  break;
     }
   } catch { /* sampler not loaded yet */ }
 }
