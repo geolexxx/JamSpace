@@ -1,4 +1,4 @@
-# JamSpace 🎵
+# JamSpace (Student)
 
 **Real-time collaborative music sequencer powered by [SpacetimeDB](https://spacetimedb.com).**
 
