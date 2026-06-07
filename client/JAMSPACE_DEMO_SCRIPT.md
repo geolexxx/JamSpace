@@ -14,43 +14,31 @@ Two presenters (**Host A** and **Host B**), two screens recorded simultaneously.
 
 ---
 
-## [0:25 – 1:25] BACKEND — POWERED BY SPACETIMEDB
+## [0:25 – 1:15] BACKEND — POWERED BY SPACETIMEDB
 
-**Host A:** "Everything you're about to see is powered entirely by SpacetimeDB — a database that runs your backend logic AND keeps every client in sync in real time, with no extra server, no REST API, and no custom WebSocket code to write."
+**Host A:** "Everything you're about to see is powered entirely by SpacetimeDB — a database that runs your backend logic AND keeps every client in sync in real time, with no extra server and no custom networking code to write."
 
-*[Action: Open `server/src/lib.rs`. Scroll to the top, the "Tables" section, lines 5–63.]*
+*[Action: Open `server/src/lib.rs`, scroll to the "Tables" section, lines 5–63.]*
 
-**Host B:** "Our entire data model lives in one Rust file. Six tables: `Session` holds the project's tempo, time signature, and play state. `Track` represents an instrument — drums, bass, synth, or lead — owned by whoever created it. `Pattern` is a reusable block of music, and `ArrangementBlock` places patterns into a song timeline. `Note` stores every single note — its step, pitch, velocity, and its **duration**. And `UserPresence` tracks who's online, in which session, in real time."
+**Host B:** "Our whole data model lives in one Rust file — six tables: `Session`, `Track`, `Pattern`, `ArrangementBlock`, `Note`, and `UserPresence`. Each one is marked `public`, which means SpacetimeDB automatically replicates every row to every connected client — that's our entire real-time-sync layer, declared with a single attribute."
 
-*[Action: Slowly highlight each `#[table(...)]` struct as you name it — `Session` (line 6), `Track` (line 17), `Pattern` (line 28), `ArrangementBlock` (line 37), `Note` (line 45), `UserPresence` (line 57).]*
+*[Action: Briefly point at each `#[table(...)]` struct — lines 6, 17, 28, 37, 45, 57 — then highlight the `public` keyword on line 44.]*
 
-**Host A:** "Every table is marked `public`, which means SpacetimeDB automatically replicates it to every subscribed client — that's the entire 'real-time sync' layer, declared in a single attribute."
+**Host A:** "Every action — adding a note, muting a track — runs through a 'reducer': a Rust function marked `#[reducer]` that updates the database. Here's `add_note` — it checks there isn't already a note at that spot, then inserts a new row into the `note` table, including the `duration` field."
 
-*[Action: Point at the `#[table(name = note, public)]` line just above the `Note` struct, line 44.]*
+*[Action: Scroll to the `add_note` reducer, lines 230–241, and briefly walk through it.]*
 
-**Host B:** "Now, how do clients actually change the data? Through 'reducers' — plain Rust functions marked `#[reducer]`, starting around line 67. For example, `add_note` takes a pattern ID, track ID, step, pitch, velocity, and duration, checks there isn't already a note at that spot, and inserts a new row directly into the `note` table."
+**Host B:** "On the client, we connect and subscribe to exactly the tables we need with SQL-like queries. From there, every insert and update streams to us over a WebSocket automatically — we just register a callback like `onInsert`, and React updates itself. The moment I add a note, it appears on Host A's screen instantly — typically in well under 100 milliseconds, with zero custom networking code."
 
-*[Action: Scroll to the `add_note` reducer (around line 230) and walk through it line by line.]*
+*[Action: Show `SUBSCRIBE_QUERIES` in `client/src/App.tsx` (lines 7–14) and the `c.db.note.onInsert(...)` callback (around line 93).]*
 
-**Host A:** "And `set_playback` is what keeps everyone's transport in sync — when one person hits play or changes the tempo, this reducer updates the shared `Session` row, and that single update instantly fans out to every connected client."
-
-*[Action: Scroll to the `set_playback` reducer (around line 287).]*
-
-**Host B:** "On the client side, we connect with `buildConnection` in `client/src/spacetime/client.ts`, and subscribe to exactly the tables we care about — sessions, tracks, patterns, notes, arrangement blocks, and presence — using SQL-like subscription queries."
-
-*[Action: Open `client/src/App.tsx`, show the `SUBSCRIBE_QUERIES` array (lines 7–14) and the `subscriptionBuilder().onApplied(...).subscribe(...)` call (lines 121–131).]*
-
-**Host A:** "From there, every insert, update, and delete on those tables streams to us over a WebSocket automatically — we just register callbacks like `onInsert` and `onUpdate`, and React state updates itself. So the moment I call `add_note` on my machine, SpacetimeDB pushes that row to Host B's client, their `onInsert` callback fires, and the note appears on their screen — typically in well under 100 milliseconds."
-
-*[Action: Briefly show the `c.db.note.onInsert(...)` callback in `App.tsx` (around line 93).]*
-
-**Host B:** "And deploying changes is just one command from the `server/` folder: `spacetime publish --yes jamspace`. SpacetimeDB compiles our Rust module to WebAssembly, uploads it, and it's live — that's our entire backend deployment pipeline."
+**Host A:** "And shipping a backend change is just one command — `spacetime publish` — which compiles our Rust module to WebAssembly and deploys it live. That's our entire backend pipeline."
 
 *[Action: Quick terminal shot running `spacetime publish --yes jamspace` from the `server/` directory.]*
 
 ---
 
-## [1:10 – 3:00] FRONTEND — LIVE COLLABORATION DEMO
+## [1:15 – 3:00] FRONTEND — LIVE COLLABORATION DEMO
 
 **Host B:** "Let's see it in action — we're going to write 'Twinkle Twinkle Little Star' together, live, from two different computers."
 
@@ -66,7 +54,7 @@ Two presenters (**Host A** and **Host B**), two screens recorded simultaneously.
 **Host B:** "Let's start with drums. I'll select the Drums track and tap out a simple kick-and-snare pattern on the drum grid."
 *[Action: Host B clicks pads on the drum grid to build a beat.]*
 
-**Host A:** "And I'll add the melody. JamSpace just shipped note duration — I can click and drag across the grid to make notes longer, perfect for holding out the long notes in 'Twinkle Twinkle'."
+**Host A:** "And I'll add the melody. I can click and drag across the grid to make notes longer, perfect for holding out the long notes in 'Twinkle Twinkle'."
 *[Action: Host A drags across cells on the synth/lead track to create held notes for "Twin-kle, twin-kle, lit-tle star."]*
 
 **Host B:** "Watch — the moment Host A places a note, it appears on my screen instantly, in their own color, with a tooltip showing exactly who created it."
@@ -111,8 +99,6 @@ All paths are relative to `/Users/christine/Documents/GitHub/spacetimeDB/`.
 | "Our entire data model lives in one Rust file… six tables" | `Session`, `Track`, `Pattern`, `ArrangementBlock`, `Note`, `UserPresence` struct definitions | `server/src/lib.rs`, lines **5–63** (Session: 6, Track: 17, Pattern: 28, ArrangementBlock: 37, **Note: 45** — note the new `duration: u16` field on line 52, UserPresence: 57) |
 | "Every table is marked `public`…" | The `#[table(name = note, public)]` attribute | `server/src/lib.rs`, line **44** |
 | "…through 'reducers'… `add_note`" | The `add_note` reducer (validates + inserts a `Note` row, now with `duration`) | `server/src/lib.rs`, lines **230–241** |
-| "`set_note_duration` lets you resize a note after the fact" *(optional extra beat)* | The new reducer added for the duration feature | `server/src/lib.rs`, lines **243–248** |
-| "`set_playback`… keeps everyone's transport in sync" | The `set_playback` reducer | `server/src/lib.rs`, lines **286–293** |
 | "We connect with `buildConnection`…" | WebSocket connection setup | `client/src/spacetime/client.ts`, function `buildConnection` (line **33**) |
 | "…subscribe to exactly the tables we care about" | `SUBSCRIBE_QUERIES` array + `subscriptionBuilder().onApplied(...).subscribe(...)` | `client/src/App.tsx`, lines **7–14** and **121–131** |
 | "…we just register callbacks like `onInsert`…" | `c.db.note.onInsert(...)` real-time callback | `client/src/App.tsx`, lines **93–99** |
@@ -150,43 +136,31 @@ All paths are relative to `/Users/christine/Documents/GitHub/spacetimeDB/`.
 
 ---
 
-## [0:25 – 1:25] 后端 —— 由 SpacetimeDB 驱动
+## [0:25 – 1:15] 后端 —— 由 SpacetimeDB 驱动
 
-**主持人 A：** "你接下来看到的一切，完全是由 SpacetimeDB 驱动的 —— 它是一个数据库，既能运行你的后端逻辑，又能让所有客户端实时保持同步，不需要额外搭建服务器，不需要写 REST API，更不需要自己写任何 WebSocket 同步代码。"
+**主持人 A：** "你接下来看到的一切，完全是由 SpacetimeDB 驱动的 —— 它是一个数据库，既能运行你的后端逻辑，又能让所有客户端实时保持同步，不需要额外搭建服务器，也不需要自己写任何网络同步代码。"
 
-*【画面动作：打开 `server/src/lib.rs`，滚动到顶部 "Tables" 部分，第 5–63 行。】*
+*【画面动作：打开 `server/src/lib.rs`，滚动到 "Tables" 部分，第 5–63 行。】*
 
-**主持人 B：** "我们整个数据模型都写在一个 Rust 文件里。一共六张表：`Session`（会话）保存项目的速度、拍号和播放状态；`Track`（音轨）代表一件乐器 —— 鼓、贝斯、合成器或主奏，归属于创建它的人；`Pattern`（模式）是一段可复用的音乐片段，`ArrangementBlock`（编排块）则把这些模式排列进歌曲的时间线；`Note`（音符）存储每一个音符的位置、音高、力度，现在还多了一个我们刚加上的字段 —— **时长（duration）**；最后 `UserPresence`（用户在线状态）实时记录谁在线、在哪个会话里。"
+**主持人 B：** "我们整个数据模型都写在一个 Rust 文件里 —— 一共六张表：`Session`、`Track`、`Pattern`、`ArrangementBlock`、`Note`、`UserPresence`。每一张都标记为 `public`，这意味着 SpacetimeDB 会自动把每一行数据同步到所有连接的客户端 —— 整个『实时同步』机制，就是靠这一个属性标记搞定的。"
 
-*【画面动作：依次高亮每一个 `#[table(...)]` 结构体，边讲边指：`Session`（第 6 行）、`Track`（第 17 行）、`Pattern`（第 28 行）、`ArrangementBlock`（第 37 行）、`Note`（第 45 行）、`UserPresence`（第 57 行）。】*
+*【画面动作：依次指向六个 `#[table(...)]` 结构体（第 6、17、28、37、45、57 行），再高亮第 44 行的 `public` 关键字。】*
 
-**主持人 A：** "每张表都标记为 `public`，这意味着 SpacetimeDB 会自动把它同步到所有订阅的客户端 —— 整个『实时同步』机制，其实就是这样一个属性标记搞定的。"
+**主持人 A：** "每一个操作 —— 添加音符、改变速度、静音音轨 —— 都通过『reducer』来完成：一种用 `#[reducer]` 标记的 Rust 函数，能原子化地更新数据库。比如这个 `add_note`：它会先检查这个位置是否已经有音符，然后把新的一行数据 —— 包括我们刚上线的 `duration` 字段 —— 直接插入到 `note` 表里。"
 
-*【画面动作：指向 `Note` 结构体上方的 `#[table(name = note, public)]`，第 44 行。】*
+*【画面动作：滚动到 `add_note` reducer，第 230–241 行，简单讲解一下。】*
 
-**主持人 B：** "那客户端要怎么修改数据呢？答案是『reducer』 —— 一种用 `#[reducer]` 标记的普通 Rust 函数，从第 67 行开始。比如 `add_note`：它接收模式 ID、音轨 ID、步进位置、音高、力度和时长，先检查这个位置是否已经有音符，然后直接往 `note` 表里插入一行新数据。"
+**主持人 B：** "在客户端这边，我们用类似 SQL 的查询语句，精确订阅自己需要的那几张表。从那以后，这些表上的每一次插入、更新都会自动通过 WebSocket 实时推送给我们 —— 我们只需要注册像 `onInsert` 这样的回调函数，React 的状态就会自动更新。我一添加音符，它就立刻出现在主持人 A 的屏幕上 —— 通常不到 100 毫秒，而且完全不需要写任何网络同步代码。"
 
-*【画面动作：滚动到 `add_note` reducer（约第 230 行），逐行讲解。】*
+*【画面动作：展示 `client/src/App.tsx` 中的 `SUBSCRIBE_QUERIES` 数组（第 7–14 行）以及 `c.db.note.onInsert(...)` 回调（约第 93 行）。】*
 
-**主持人 A：** "`set_playback` 则负责让所有人的播放状态保持一致 —— 当有人按下播放键或修改速度时，这个 reducer 会更新共享的 `Session` 数据行，而这一次更新会瞬间同步推送给所有连接的客户端。"
-
-*【画面动作：滚动到 `set_playback` reducer（约第 287 行）。】*
-
-**主持人 B：** "在客户端这边，我们用 `client/src/spacetime/client.ts` 里的 `buildConnection` 建立连接，然后用类似 SQL 的订阅查询语句，精确订阅我们关心的几张表 —— 会话、音轨、模式、音符、编排块和在线状态。"
-
-*【画面动作：打开 `client/src/App.tsx`，展示 `SUBSCRIBE_QUERIES` 数组（第 7–14 行）以及 `subscriptionBuilder().onApplied(...).subscribe(...)` 调用（第 121–131 行）。】*
-
-**主持人 A：** "从那一刻起，这些表上的每一次插入、更新、删除都会自动通过 WebSocket 实时推送给我们 —— 我们只需要注册像 `onInsert`、`onUpdate` 这样的回调函数，React 的状态就会自动更新。所以我在我的电脑上调用 `add_note` 的瞬间，SpacetimeDB 就会把这条新数据推送到主持人 B 的客户端，他的 `onInsert` 回调被触发，音符就出现在他的屏幕上了 —— 整个过程通常不到 100 毫秒。"
-
-*【画面动作：简单展示 `App.tsx` 中的 `c.db.note.onInsert(...)` 实时回调（约第 93 行）。】*
-
-**主持人 B：** "而部署后端改动也只需要在 `server/` 目录下执行一条命令：`spacetime publish --yes jamspace`。SpacetimeDB 会把我们的 Rust 模块编译成 WebAssembly，上传并立即生效 —— 这就是我们整个后端的部署流程。"
+**主持人 A：** "而部署后端改动只需要一条命令 —— `spacetime publish` —— 它会把我们的 Rust 模块编译成 WebAssembly 并立即上线。这就是我们整个后端的部署流程。"
 
 *【画面动作：快速展示在 `server/` 目录下执行 `spacetime publish --yes jamspace` 的终端画面。】*
 
 ---
 
-## [1:10 – 3:00] 前端功能 —— 实时协作演示
+## [1:15 – 3:00] 前端功能 —— 实时协作演示
 
 **主持人 B：** "让我们实际操作一下 —— 我们将在两台不同的电脑上，现场一起合作完成《小星星》这首曲子。"
 
@@ -247,8 +221,6 @@ All paths are relative to `/Users/christine/Documents/GitHub/spacetimeDB/`.
 | "我们整个数据模型都写在一个 Rust 文件里……一共六张表" | `Session`、`Track`、`Pattern`、`ArrangementBlock`、`Note`、`UserPresence` 结构体定义 | `server/src/lib.rs`，第 **5–63** 行（Session: 6 行，Track: 17 行，Pattern: 28 行，ArrangementBlock: 37 行，**Note: 45 行** —— 注意第 52 行新增的 `duration: u16` 字段，UserPresence: 57 行） |
 | "每张表都标记为 `public`……" | `#[table(name = note, public)]` 属性标记 | `server/src/lib.rs`，第 **44** 行 |
 | "……答案是『reducer』……比如 `add_note`" | `add_note` reducer（校验后插入一行 `Note`，现在带有 `duration` 参数） | `server/src/lib.rs`，第 **230–241** 行 |
-| "`set_note_duration` 可以在创建之后调整音符长度"（*可选补充内容*） | 为时长功能新增的 reducer | `server/src/lib.rs`，第 **243–248** 行 |
-| "`set_playback`……让所有人的播放状态保持一致" | `set_playback` reducer | `server/src/lib.rs`，第 **286–293** 行 |
 | "我们用 `buildConnection` 建立连接……" | WebSocket 连接建立逻辑 | `client/src/spacetime/client.ts`，函数 `buildConnection`（第 **33** 行） |
 | "……精确订阅我们关心的几张表" | `SUBSCRIBE_QUERIES` 数组 + `subscriptionBuilder().onApplied(...).subscribe(...)` | `client/src/App.tsx`，第 **7–14** 行 与 第 **121–131** 行 |
 | "……注册像 `onInsert` 这样的回调函数" | `c.db.note.onInsert(...)` 实时回调 | `client/src/App.tsx`，第 **93–99** 行 |
