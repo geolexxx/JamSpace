@@ -47,11 +47,24 @@ export default function PlaybackControls({
   const [showTimeSig,  setShowTimeSig]    = useState(false);
   const [editingBpm,   setEditingBpm]     = useState(false);
   const [bpmInput,     setBpmInput]       = useState(String(tempoBpm));
+  const [pendingBpm,   setPendingBpm]     = useState<number | null>(null);
   const demoRef    = useRef<HTMLDivElement>(null);
   const timeSigRef = useRef<HTMLDivElement>(null);
+  const bpmInputRef = useRef<HTMLInputElement>(null);
 
   const beat = activeStep >= 0 ? Math.floor(activeStep / stepsPerBeat) + 1 : 1;
   const sub  = activeStep >= 0 ? (activeStep % stepsPerBeat) + 1 : 1;
+
+  // Sync display when server confirms or another user changes BPM
+  useEffect(() => {
+    if (!editingBpm) {
+      setBpmInput(String(tempoBpm));
+      setPendingBpm(null);
+    }
+  }, [tempoBpm]);
+
+  // Optimistic display: show pending value immediately while waiting for server
+  const displayBpm = pendingBpm ?? tempoBpm;
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -62,9 +75,16 @@ export default function PlaybackControls({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const handleBpmSubmit = (val: string) => {
-    const n = parseInt(val);
-    if (!isNaN(n) && n >= 40 && n <= 240) onBpmChange(n);
+  // Called only via onBlur — avoids double-fire from Enter+blur
+  const commitBpm = (val: string) => {
+    const n = parseInt(val, 10);
+    if (!isNaN(n) && n >= 40 && n <= 240) {
+      setPendingBpm(n);
+      onBpmChange(n);
+      setBpmInput(String(n));
+    } else {
+      setBpmInput(String(displayBpm)); // reset to current if invalid
+    }
     setEditingBpm(false);
   };
 
@@ -158,11 +178,15 @@ export default function PlaybackControls({
         <span style={{ fontSize: 10, color: "#5a5a7a", textTransform: "uppercase", letterSpacing: "0.08em" }}>BPM</span>
         {editingBpm ? (
           <input
+            ref={bpmInputRef}
             autoFocus
             value={bpmInput}
             onChange={e => setBpmInput(e.target.value)}
-            onBlur={e => handleBpmSubmit(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") handleBpmSubmit(bpmInput); if (e.key === "Escape") setEditingBpm(false); }}
+            onBlur={e => commitBpm(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") { e.preventDefault(); bpmInputRef.current?.blur(); }
+              if (e.key === "Escape") { setBpmInput(String(displayBpm)); setEditingBpm(false); }
+            }}
             style={{
               width: 52, fontFamily: "monospace", fontSize: 13, textAlign: "center",
               borderRadius: 5, padding: "3px 6px", outline: "none",
@@ -171,7 +195,7 @@ export default function PlaybackControls({
           />
         ) : (
           <div
-            onClick={() => { setBpmInput(String(tempoBpm)); setEditingBpm(true); }}
+            onClick={() => { setBpmInput(String(displayBpm)); setEditingBpm(true); }}
             style={{
               fontFamily: "monospace", fontSize: 13, color: "white",
               backgroundColor: "#0a0a12", border: "1px solid #1e2a4a",
@@ -179,12 +203,12 @@ export default function PlaybackControls({
               minWidth: 48, textAlign: "center",
             }}
           >
-            {tempoBpm}
+            {displayBpm}
           </div>
         )}
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          <button onClick={() => onBpmChange(Math.min(240, tempoBpm + 1))} style={{ ...microBtn }}>▲</button>
-          <button onClick={() => onBpmChange(Math.max(40,  tempoBpm - 1))} style={{ ...microBtn }}>▼</button>
+          <button onClick={() => { const n = Math.min(240, displayBpm + 1); setPendingBpm(n); onBpmChange(n); }} style={{ ...microBtn }}>▲</button>
+          <button onClick={() => { const n = Math.max(40,  displayBpm - 1); setPendingBpm(n); onBpmChange(n); }} style={{ ...microBtn }}>▼</button>
         </div>
       </div>
 

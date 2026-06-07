@@ -47,6 +47,7 @@ import RemoveNoteReducer from "./remove_note_reducer";
 import RemoveTrackReducer from "./remove_track_reducer";
 import RenamePatternReducer from "./rename_pattern_reducer";
 import SetActiveTrackReducer from "./set_active_track_reducer";
+import SetNoteDurationReducer from "./set_note_duration_reducer";
 import SetPatternBarsReducer from "./set_pattern_bars_reducer";
 import SetPlaybackReducer from "./set_playback_reducer";
 import SetTimeSignatureReducer from "./set_time_signature_reducer";
@@ -166,6 +167,7 @@ const reducersSchema = __reducers(
   __reducerSchema("remove_track", RemoveTrackReducer),
   __reducerSchema("rename_pattern", RenamePatternReducer),
   __reducerSchema("set_active_track", SetActiveTrackReducer),
+  __reducerSchema("set_note_duration", SetNoteDurationReducer),
   __reducerSchema("set_pattern_bars", SetPatternBarsReducer),
   __reducerSchema("set_playback", SetPlaybackReducer),
   __reducerSchema("set_time_signature", SetTimeSignatureReducer),
