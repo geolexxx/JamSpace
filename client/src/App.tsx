@@ -14,33 +14,47 @@ const SUBSCRIBE_QUERIES = [
 ];
 
 export default function App() {
-  const [conn, setConn]             = useState<DbConnection | null>(null);
-  const [myIdentity, setMyIdentity] = useState<string>("");
-  const [joined, setJoined]         = useState(false);
-  const [connecting, setConnecting] = useState(true);
+  const [conn, setConn]                           = useState<DbConnection | null>(null);
+  const [myIdentity, setMyIdentity]               = useState<string>("");
+  const [joined, setJoined]                       = useState(false);
+  const [connecting, setConnecting]               = useState(true);
+  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
 
-  const [session,     setSession]     = useState<Session | null>(null);
-  const [tracks,      setTracks]      = useState<Track[]>([]);
-  const [notes,       setNotes]       = useState<Note[]>([]);
-  const [users,       setUsers]       = useState<UserPresence[]>([]);
-  const [patterns,    setPatterns]    = useState<Pattern[]>([]);
-  const [arrangement, setArrangement] = useState<ArrangementBlock[]>([]);
+  const [sessions,     setSessions]     = useState<Session[]>([]);
+  const [tracks,       setTracks]       = useState<Track[]>([]);
+  const [notes,        setNotes]        = useState<Note[]>([]);
+  const [users,        setUsers]        = useState<UserPresence[]>([]);
+  const [patterns,     setPatterns]     = useState<Pattern[]>([]);
+  const [arrangement,  setArrangement]  = useState<ArrangementBlock[]>([]);
 
   const initializedRef = useRef(false);
+  const pendingJoinRef = useRef<{ username: string } | null>(null);
+  const connRef        = useRef<DbConnection | null>(null);
 
   useEffect(() => {
     const c = buildConnection((connection, identity) => {
       setMyIdentity(identity.toHexString());
       setConn(connection);
+      connRef.current = connection;
       setConnecting(false);
     });
 
     // ── Session ──────────────────────────────────────────────────────────────
     c.db.session.onInsert((_ctx, row) => {
       if (!initializedRef.current) return;
-      setSession(row);
+      setSessions(prev => prev.some(s => s.sessionId === row.sessionId) ? prev : [...prev, row]);
+      // Complete a pending "Create & Join" — grab the auto-inc id SpacetimeDB assigned
+      if (pendingJoinRef.current && connRef.current) {
+        const { username } = pendingJoinRef.current;
+        pendingJoinRef.current = null;
+        connRef.current.reducers.joinSession({ sessionId: row.sessionId, username });
+        setSelectedSessionId(row.sessionId);
+        setJoined(true);
+      }
     });
-    c.db.session.onUpdate((_ctx, _old, row) => setSession(row));
+    c.db.session.onUpdate((_ctx, _old, row) =>
+      setSessions(prev => prev.map(s => s.sessionId === row.sessionId ? row : s))
+    );
 
     // ── Tracks ───────────────────────────────────────────────────────────────
     c.db.track.onInsert((_ctx, row) => {
@@ -111,21 +125,29 @@ export default function App() {
         setUsers([...c.db.user_presence.iter()]);
         setPatterns([...c.db.pattern.iter()]);
         setArrangement([...c.db.arrangement_block.iter()]);
-        const firstSession = [...c.db.session.iter()][0];
-        if (firstSession) setSession(firstSession);
+        setSessions([...c.db.session.iter()]);
         initializedRef.current = true;
       })
       .subscribe(SUBSCRIBE_QUERIES);
   }, []);
 
-  const handleJoin = useCallback((username: string) => {
+  const handleJoin = useCallback((username: string, sessionId: number) => {
     if (!conn) return;
-    conn.reducers.setupDefaultSession({});
-    setTimeout(() => {
-      conn.reducers.joinSession({ sessionId: 1, username });
-      setJoined(true);
-    }, 500);
+    conn.reducers.joinSession({ sessionId, username });
+    setSelectedSessionId(sessionId);
+    setJoined(true);
   }, [conn]);
+
+  const handleCreate = useCallback((username: string, projectName: string) => {
+    if (!conn) return;
+    pendingJoinRef.current = { username };
+    conn.reducers.createNewSession({ name: projectName });
+  }, [conn]);
+
+  const handleBackToHome = useCallback(() => {
+    setJoined(false);
+    setSelectedSessionId(null);
+  }, []);
 
   if (connecting) {
     return (
@@ -136,26 +158,45 @@ export default function App() {
     );
   }
 
-  if (!joined) return <JoinModal onJoin={handleJoin} />;
+  if (!joined) {
+    return (
+      <JoinModal
+        sessions={sessions}
+        onJoin={handleJoin}
+        onCreate={handleCreate}
+      />
+    );
+  }
+
+  const session = sessions.find(s => s.sessionId === selectedSessionId) ?? null;
 
   if (!session) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3" style={{ backgroundColor: "#0e0e14" }}>
-        <div className="text-2xl animate-spin">🎵</div>
+        <div className="text-2xl">🎵</div>
         <div className="text-gray-400 text-sm">Loading session...</div>
       </div>
     );
   }
 
+  // Filter all data to the selected session
+  const sessionTracks      = tracks.filter(t => t.sessionId === selectedSessionId);
+  const sessionPatterns    = patterns.filter(p => p.sessionId === selectedSessionId);
+  const sessionArrangement = arrangement.filter(b => b.sessionId === selectedSessionId);
+  const sessionPatternIds  = new Set(sessionPatterns.map(p => p.patternId));
+  const sessionNotes       = notes.filter(n => sessionPatternIds.has(n.patternId));
+  const sessionUsers       = users.filter(u => u.sessionId === selectedSessionId);
+
   return (
     <SessionView
       session={session}
-      tracks={tracks}
-      notes={notes}
-      users={users}
-      patterns={patterns}
-      arrangement={arrangement}
+      tracks={sessionTracks}
+      notes={sessionNotes}
+      users={sessionUsers}
+      patterns={sessionPatterns}
+      arrangement={sessionArrangement}
       myIdentity={myIdentity}
+      onBackToHome={handleBackToHome}
     />
   );
 }

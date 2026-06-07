@@ -19,6 +19,7 @@ interface Props {
   onTimeSigChange: (top: number, bottom: number) => void;
   onLoadDemo:      (demo: DemoPattern) => void;
   onToggleMode:    () => void;
+  onBackToHome:    () => void;
 }
 
 const TIME_SIGS = [
@@ -40,6 +41,7 @@ export default function PlaybackControls({
   isPlaying, tempoBpm, sessionName, activeStep, stepsPerBeat,
   timeSigTop, timeSigBottom, users, tracks, myIdentity,
   playbackMode, onTogglePlay, onBpmChange, onTimeSigChange, onLoadDemo, onToggleMode,
+  onBackToHome,
 }: Props) {
   const [showDemoMenu, setShowDemoMenu]   = useState(false);
   const [showTimeSig,  setShowTimeSig]    = useState(false);
@@ -82,15 +84,27 @@ export default function PlaybackControls({
         zIndex: 50,
       }}
     >
-      {/* Logo / session name */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginRight: 8, flexShrink: 0 }}>
+      {/* Back to home */}
+      <button
+        onClick={onBackToHome}
+        title="Back to projects"
+        style={{
+          display: "flex", alignItems: "center", gap: 5,
+          padding: "4px 10px", borderRadius: 6, cursor: "pointer",
+          backgroundColor: "#14141e", color: "#5a5a7a",
+          border: "1px solid #2a2a3a", fontSize: 12, flexShrink: 0,
+          transition: "all 0.15s",
+        }}
+        onMouseEnter={e => { e.currentTarget.style.color = "#a0a0c0"; e.currentTarget.style.borderColor = "#4a4a6a"; }}
+        onMouseLeave={e => { e.currentTarget.style.color = "#5a5a7a"; e.currentTarget.style.borderColor = "#2a2a3a"; }}
+      >
+        ← Home
+      </button>
+
+      {/* Logo */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
         <span style={{ fontSize: 18 }}>🎵</span>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#e0e0f0", lineHeight: 1.2 }}>JamSpace</div>
-          <div style={{ fontSize: 10, color: "#5a5a7a", lineHeight: 1.2, maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {sessionName}
-          </div>
-        </div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#e0e0f0" }}>JamSpace</div>
       </div>
 
       {/* Separator */}
@@ -230,6 +244,24 @@ export default function PlaybackControls({
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
+
+      {/* Session name badge */}
+      <div
+        style={{
+          display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
+          padding: "3px 10px", borderRadius: 6,
+          backgroundColor: "#1a1428", border: "1px solid #3a2a5a",
+          maxWidth: 160,
+        }}
+      >
+        <span style={{ fontSize: 10, color: "#6a4a8a" }}>♬</span>
+        <span style={{
+          fontSize: 12, fontWeight: 600, color: "#c0a0f0",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {sessionName}
+        </span>
+      </div>
 
       {/* Online users */}
       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
