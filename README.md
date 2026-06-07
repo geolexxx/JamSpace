@@ -146,57 +146,6 @@ JamSpace/
 
 ---
 
-## Getting Started
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org) 18+ and npm
-- [Rust](https://rustup.rs) toolchain (for building the server module)
-- The SpacetimeDB CLI (installed below)
-
-### 1. Install the SpacetimeDB CLI
-
-```bash
-curl -sSf https://install.spacetimedb.com | sh
-```
-
-### 2. Start a local SpacetimeDB server
-
-```bash
-spacetime start
-```
-
-Leave this running in its own terminal.
-
-### 3. Publish the server module
-
-```bash
-cd server
-spacetime publish --server local jamspace
-```
-
-### 4. Generate the TypeScript bindings
-
-```bash
-spacetime generate --lang typescript \
-  --out-dir client/src/module_bindings \
-  --project-path server
-```
-
-Re-run this whenever you change tables or reducers in `server/src/lib.rs`.
-
-### 5. Run the frontend
-
-```bash
-cd client
-npm install
-npm run dev
-```
-
-Open **http://localhost:5173** in two browser tabs (or two devices) to watch edits sync in real time.
-
----
-
 ## Development Workflow
 
 | Task                         | Command                                                                                   |
