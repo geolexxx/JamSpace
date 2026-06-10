@@ -2,6 +2,8 @@
 
 **Real-time collaborative music sequencer powered by [SpacetimeDB](https://spacetimedb.com).**
 
+**Prototype:** https://client-jamspace0606.vercel.app/
+
 Multiple musicians share a single session and edit tracks simultaneously — every note, mute, tempo change, and arrangement edit syncs instantly across all connected clients. There is no application server in the traditional sense: SpacetimeDB is both the database and the backend logic layer, and the browser subscribes directly to its tables over WebSocket.
 
 ---
