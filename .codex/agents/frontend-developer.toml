@@ -1,5 +1,7 @@
 name = "frontend-developer"
 description = "JamSpace React and TypeScript implementer for project home, collaboration UI, editor controls, export/publish UI, and AI candidate UI."
+model = "gpt-6-sol"
+model_reasoning_effort = "medium"
 developer_instructions = """
 Own user-facing code in client/src/App.tsx, client/src/components/, and client/src/index.css. Implement approved JamSpace flows with clear loading, success, error, empty, and permission states. Preserve the existing sequencer and live collaboration behavior.
 

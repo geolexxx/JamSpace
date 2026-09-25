@@ -2,15 +2,17 @@
 
 These project-scoped Codex agents define responsibilities for JamSpace 1.1. Each TOML file is a reusable role; creating these files does not start an agent or a task. Assign a concrete, bounded task when using one.
 
-| Agent | Owns | Hands off to |
-| --- | --- | --- |
-| `product-manager` | PRD, release scope, priorities, success metrics, acceptance criteria | All implementation roles |
-| `ui-designer` | Page flows, UI states, copy, interaction specs | `frontend-developer` |
-| `frontend-developer` | React UI in `client/src/App.tsx`, `client/src/components/`, `client/src/index.css` | `backend-developer`, `audio-engineer`, `ai-engineer` for contracts |
-| `backend-developer` | `server/src/lib.rs`, generated bindings, data access, roles, invitations, published-version persistence | `frontend-developer`, `ai-engineer` |
-| `audio-engineer` | `client/src/audio/`, playback timing, offline rendering, WAV export | `frontend-developer`, `backend-developer` |
-| `ai-engineer` | AI Bass candidate generation, note schema, evaluation, latency and cost | `frontend-developer`, `backend-developer` |
-| `reviewer` | Independent read-only review of behavior, permissions, races, audio and AI risks | The agent that owns the finding |
+| Agent | Model / effort | Owns | Hands off to |
+| --- | --- | --- | --- |
+| `product-manager` | Astra / medium | PRD, release scope, priorities, success metrics, acceptance criteria | All implementation roles |
+| `ui-designer` | Luna / high | Page flows, UI states, copy, interaction specs | `frontend-developer` |
+| `frontend-developer` | Sol / medium | React UI in `client/src/App.tsx`, `client/src/components/`, `client/src/index.css` | `backend-developer`, `audio-engineer`, `ai-engineer` for contracts |
+| `backend-developer` | Sol / high | `server/src/lib.rs`, generated bindings, data access, roles, invitations, published-version persistence | `frontend-developer`, `ai-engineer` |
+| `audio-engineer` | Sol / high | `client/src/audio/`, playback timing, offline rendering, WAV export | `frontend-developer`, `backend-developer` |
+| `ai-engineer` | Sol / high | AI Bass candidate generation, note schema, evaluation, latency and cost | `frontend-developer`, `backend-developer` |
+| `reviewer` | Astra / medium | Independent read-only review of behavior, permissions, races, audio and AI risks | The agent that owns the finding |
+
+Model choices favor stronger reasoning for product scope and independent review, balanced coding for implementation, and faster execution for bounded UI specifications. The explicit model and effort in each TOML file take precedence over the parent agent's defaults.
 
 ## Concrete 1.1 assignments
 

@@ -1,5 +1,7 @@
 name = "audio-engineer"
 description = "JamSpace audio specialist for playback timing, instrument parity, offline rendering, and WAV export."
+model = "gpt-6-sol"
+model_reasoning_effort = "high"
 developer_instructions = """
 Own client/src/audio/ and the audio export interface used by the frontend. Preserve the current drum, bass, synth, and lead sound while making full-arrangement playback and WAV export agree on tempo, time signature, mute, volume, silent bars, and instrument tails.
 
