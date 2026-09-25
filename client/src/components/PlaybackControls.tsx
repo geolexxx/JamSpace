@@ -20,6 +20,7 @@ interface Props {
   onLoadDemo:      (demo: DemoPattern) => void;
   onToggleMode:    () => void;
   onBackToHome:    () => void;
+  onShare:         () => void;
 }
 
 const TIME_SIGS = [
@@ -41,7 +42,7 @@ export default function PlaybackControls({
   isPlaying, tempoBpm, sessionName, activeStep, stepsPerBeat,
   timeSigTop, timeSigBottom, users, tracks, myIdentity,
   playbackMode, onTogglePlay, onBpmChange, onTimeSigChange, onLoadDemo, onToggleMode,
-  onBackToHome,
+  onBackToHome, onShare,
 }: Props) {
   const [showDemoMenu, setShowDemoMenu]   = useState(false);
   const [showTimeSig,  setShowTimeSig]    = useState(false);
@@ -90,11 +91,12 @@ export default function PlaybackControls({
 
   return (
     <div
+      className="transport-bar"
       style={{
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "0 16px",
+        padding: "0 12px",
         height: 52,
         backgroundColor: "#111118",
         borderBottom: "1px solid #2a2a3a",
@@ -106,6 +108,7 @@ export default function PlaybackControls({
     >
       {/* Back to home */}
       <button
+        className="transport-home"
         onClick={onBackToHome}
         title="Back to projects"
         style={{
@@ -122,16 +125,17 @@ export default function PlaybackControls({
       </button>
 
       {/* Logo */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+      <div className="transport-logo" style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
         <span style={{ fontSize: 18 }}>🎵</span>
         <div style={{ fontSize: 13, fontWeight: 700, color: "#e0e0f0" }}>JamSpace</div>
       </div>
 
       {/* Separator */}
-      <div style={{ width: 1, height: 28, backgroundColor: "#2a2a3a", flexShrink: 0 }} />
+      <div className="transport-separator" style={{ width: 1, height: 28, backgroundColor: "#2a2a3a", flexShrink: 0 }} />
 
       {/* Rewind */}
       <button
+        className="transport-rewind"
         onClick={() => {}}
         style={{ ...btnBase, fontSize: 13, color: "#606080" }}
         onMouseEnter={e => (e.currentTarget.style.color = "#c0c0e0")}
@@ -142,6 +146,7 @@ export default function PlaybackControls({
 
       {/* Play/Stop */}
       <button
+        className="transport-play"
         onClick={onTogglePlay}
         style={{
           width: 38, height: 38, borderRadius: "50%", border: "none",
@@ -160,6 +165,7 @@ export default function PlaybackControls({
 
       {/* Position counter (LCD style) */}
       <div
+        className="transport-counter"
         style={{
           fontFamily: "monospace", fontSize: 13, color: "#60a5fa",
           backgroundColor: "#0a0a12", border: "1px solid #1e2a4a",
@@ -171,10 +177,10 @@ export default function PlaybackControls({
       </div>
 
       {/* Separator */}
-      <div style={{ width: 1, height: 28, backgroundColor: "#2a2a3a", flexShrink: 0 }} />
+      <div className="transport-separator" style={{ width: 1, height: 28, backgroundColor: "#2a2a3a", flexShrink: 0 }} />
 
       {/* BPM */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+      <div className="transport-bpm" style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
         <span style={{ fontSize: 10, color: "#5a5a7a", textTransform: "uppercase", letterSpacing: "0.08em" }}>BPM</span>
         {editingBpm ? (
           <input
@@ -213,7 +219,7 @@ export default function PlaybackControls({
       </div>
 
       {/* Time signature */}
-      <div className="relative" ref={timeSigRef} style={{ flexShrink: 0 }}>
+      <div className="relative transport-time-signature" ref={timeSigRef} style={{ flexShrink: 0 }}>
         <button
           onClick={() => setShowTimeSig(s => !s)}
           style={{
@@ -250,6 +256,7 @@ export default function PlaybackControls({
 
       {/* Personal / Sync mode toggle */}
       <button
+        className="transport-mode"
         onClick={onToggleMode}
         title={playbackMode === "personal" ? "Personal mode: play & volume only affect you" : "Sync mode: play & volume sync to everyone"}
         style={{
@@ -267,10 +274,11 @@ export default function PlaybackControls({
       </button>
 
       {/* Spacer */}
-      <div style={{ flex: 1 }} />
+      <div className="transport-spacer" style={{ flex: 1 }} />
 
       {/* Session name badge */}
       <div
+        className="transport-session-name"
         style={{
           display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
           padding: "3px 10px", borderRadius: 6,
@@ -287,8 +295,8 @@ export default function PlaybackControls({
         </span>
       </div>
 
-      {/* Online users */}
-      <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+      {/* People who have joined this project */}
+      <div className="transport-people" style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
         {users.map(u => {
           const hex   = u.identity.toHexString();
           const color = userColor(hex);
@@ -309,18 +317,13 @@ export default function PlaybackControls({
             </div>
           );
         })}
-        {users.length > 0 && (
-          <span style={{ fontSize: 10, color: "#4a4a6a", marginLeft: 2 }}>
-            {users.length} online
-          </span>
-        )}
       </div>
 
       {/* Separator */}
-      <div style={{ width: 1, height: 28, backgroundColor: "#2a2a3a", flexShrink: 0 }} />
+      <div className="transport-separator" style={{ width: 1, height: 28, backgroundColor: "#2a2a3a", flexShrink: 0 }} />
 
       {/* Demo menu */}
-      <div className="relative" ref={demoRef} style={{ flexShrink: 0 }}>
+      <div className="relative transport-demo" ref={demoRef} style={{ flexShrink: 0 }}>
         <button
           onClick={() => setShowDemoMenu(s => !s)}
           style={{
@@ -350,6 +353,16 @@ export default function PlaybackControls({
           </div>
         )}
       </div>
+
+      <button
+        className="transport-share"
+        onClick={onShare}
+        aria-label="Invite collaborators"
+        style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexShrink: 0, padding: "8px 12px", border: "1px solid #9f6cf3", borderRadius: 8, background: "#7135cd", color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 12px #7c3aed44" }}
+      >
+        <span aria-hidden="true">＋</span> <span>Invite</span>
+      </button>
+      <div className="transport-break" aria-hidden="true" />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import JoinModal from "./components/JoinModal";
 import SessionView from "./components/SessionView";
+import { clearShareLinkFromAddress, readSharedSessionId } from "./collaboration/shareLink";
 import { buildConnection, type Session, type Track, type Note, type UserPresence, type Pattern, type ArrangementBlock } from "./spacetime/client";
 import type { DbConnection } from "./module_bindings";
 
@@ -18,7 +19,10 @@ export default function App() {
   const [myIdentity, setMyIdentity]               = useState<string>("");
   const [joined, setJoined]                       = useState(false);
   const [connecting, setConnecting]               = useState(true);
+  const [sessionsReady, setSessionsReady]           = useState(false);
+  const [sessionsError, setSessionsError]           = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
+  const [sharedLink, setSharedLink]                 = useState(() => readSharedSessionId(window.location.search));
 
   const [sessions,     setSessions]     = useState<Session[]>([]);
   const [tracks,       setTracks]       = useState<Track[]>([]);
@@ -40,11 +44,14 @@ export default function App() {
     });
 
     // ── Session ──────────────────────────────────────────────────────────────
-    c.db.session.onInsert((_ctx, row) => {
+    c.db.session.onInsert((ctx, row) => {
       if (!initializedRef.current) return;
       setSessions(prev => prev.some(s => s.sessionId === row.sessionId) ? prev : [...prev, row]);
-      // Complete a pending "Create & Join" — grab the auto-inc id SpacetimeDB assigned
-      if (pendingJoinRef.current && connRef.current) {
+      // Only the insert event from this connection's own reducer completes Create & Join.
+      if (
+        pendingJoinRef.current && connRef.current &&
+        ctx.event.tag === "Reducer" && ctx.event.value.reducer.name === "create_new_session"
+      ) {
         const { username } = pendingJoinRef.current;
         pendingJoinRef.current = null;
         connRef.current.reducers.joinSession({ sessionId: row.sessionId, username });
@@ -127,26 +134,54 @@ export default function App() {
         setArrangement([...c.db.arrangement_block.iter()]);
         setSessions([...c.db.session.iter()]);
         initializedRef.current = true;
+        setSessionsReady(true);
+        setSessionsError(false);
       })
+      .onError(() => setSessionsError(true))
       .subscribe(SUBSCRIBE_QUERIES);
   }, []);
 
+  useEffect(() => {
+    if (connecting || sessionsReady || sessionsError) return;
+    const timeout = window.setTimeout(() => setSessionsError(true), 15000);
+    return () => window.clearTimeout(timeout);
+  }, [connecting, sessionsReady, sessionsError]);
+
+  useEffect(() => {
+    const onPopState = () => setSharedLink(readSharedSessionId(window.location.search));
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   const handleJoin = useCallback((username: string, sessionId: number) => {
-    if (!conn) return;
+    if (!conn || !sessions.some(s => s.sessionId === sessionId)) return;
     conn.reducers.joinSession({ sessionId, username });
     setSelectedSessionId(sessionId);
     setJoined(true);
-  }, [conn]);
+    if (sharedLink.sessionId !== sessionId) {
+      clearShareLinkFromAddress();
+      setSharedLink({ hasLink: false, sessionId: null });
+    }
+  }, [conn, sessions, sharedLink.sessionId]);
 
   const handleCreate = useCallback((username: string, projectName: string) => {
-    if (!conn) return;
+    if (!conn || pendingJoinRef.current) return;
     pendingJoinRef.current = { username };
-    conn.reducers.createNewSession({ name: projectName });
+    void conn.reducers.createNewSession({ name: projectName }).catch(() => {
+      pendingJoinRef.current = null;
+    });
   }, [conn]);
 
   const handleBackToHome = useCallback(() => {
     setJoined(false);
     setSelectedSessionId(null);
+    clearShareLinkFromAddress();
+    setSharedLink({ hasLink: false, sessionId: null });
+  }, []);
+
+  const handleDismissSharedLink = useCallback(() => {
+    clearShareLinkFromAddress();
+    setSharedLink({ hasLink: false, sessionId: null });
   }, []);
 
   if (connecting) {
@@ -162,8 +197,12 @@ export default function App() {
     return (
       <JoinModal
         sessions={sessions}
+        sessionsReady={sessionsReady}
+        sessionsError={sessionsError}
+        sharedLink={sharedLink}
         onJoin={handleJoin}
         onCreate={handleCreate}
+        onDismissSharedLink={handleDismissSharedLink}
       />
     );
   }

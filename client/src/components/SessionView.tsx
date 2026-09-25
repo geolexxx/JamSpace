@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import PlaybackControls from "./PlaybackControls";
+import ShareDialog from "./ShareDialog";
 import PatternArrangement from "./PatternArrangement";
 import BeatRuler, { CELL_W, RULER_H } from "./BeatRuler";
 import TrackHeader, { HEADER_W } from "./TrackHeader";
@@ -46,6 +47,8 @@ export default function SessionView({
   const [activeTrackId,   setActiveTrackId]   = useState<number | null>(null);
   const [samplersReady,   setSamplersReady]   = useState(isSamplersReady);
   const [showAddTrack,    setShowAddTrack]    = useState(false);
+  const [showShare,       setShowShare]       = useState(false);
+  const closeShare = useCallback(() => setShowShare(false), []);
 
   // Personal vs Sync mode (persisted in localStorage)
   const [playbackMode, setPlaybackMode] = useState<"personal" | "sync">(
@@ -328,10 +331,15 @@ export default function SessionView({
         onLoadDemo={handleLoadDemo}
         onToggleMode={handleToggleMode}
         onBackToHome={onBackToHome}
+        onShare={() => setShowShare(true)}
         users={users}
         tracks={tracks}
         myIdentity={myIdentity}
       />
+
+      {showShare && (
+        <ShareDialog sessionId={session.sessionId} sessionName={session.name} onClose={closeShare} />
+      )}
 
 
       {/* Loading banner */}

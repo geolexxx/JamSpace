@@ -1,10 +1,15 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import type { Session } from "../spacetime/client";
+import ShareDialog from "./ShareDialog";
 
 interface Props {
   sessions: Session[];
+  sessionsReady: boolean;
+  sessionsError: boolean;
+  sharedLink: { hasLink: boolean; sessionId: number | null };
   onJoin:   (username: string, sessionId: number) => void;
   onCreate: (username: string, projectName: string) => void;
+  onDismissSharedLink: () => void;
 }
 
 const PLACEHOLDER_NAMES = ["Jimi", "Billie", "Freddie", "Nina", "Miles", "Björk", "Prince", "Stevie"];
@@ -73,13 +78,16 @@ function FloatingNotes() {
   );
 }
 
-export default function JoinModal({ sessions, onJoin, onCreate }: Props) {
+export default function JoinModal({ sessions, sessionsReady, sessionsError, sharedLink, onJoin, onCreate, onDismissSharedLink }: Props) {
   const [username,    setUsername]    = useState("");
   const [creating,    setCreating]    = useState(false);
   const [projectName, setProjectName] = useState("");
+  const [sharingSession, setSharingSession] = useState<Session | null>(null);
+  const closeShare = useCallback(() => setSharingSession(null), []);
   const placeholder = useRef(PLACEHOLDER_NAMES[Math.floor(Math.random() * PLACEHOLDER_NAMES.length)]).current;
 
   const effectiveName = username.trim() || placeholder;
+  const sharedSession = sessions.find(s => s.sessionId === sharedLink.sessionId);
 
   const handleJoin = (sessionId: number) => onJoin(effectiveName, sessionId);
 
@@ -188,7 +196,7 @@ export default function JoinModal({ sessions, onJoin, onCreate }: Props) {
         </svg>
 
         {/* ── Main card ── */}
-        <div style={{ width: "100%", maxWidth: 420, margin: "0 24px", position: "relative", zIndex: 10 }}>
+        <div style={{ width: "calc(100% - 48px)", maxWidth: 420, margin: "0 24px", position: "relative", zIndex: 10 }}>
 
           {/* Header */}
           <div style={{ textAlign: "center", marginBottom: 28 }}>
@@ -240,7 +248,47 @@ export default function JoinModal({ sessions, onJoin, onCreate }: Props) {
             />
           </div>
 
-          {!creating ? (
+          {sharedLink.hasLink ? (
+            <div style={{
+              borderRadius: 16, padding: "20px 18px",
+              background: "linear-gradient(135deg, #24143c 0%, #120e22 100%)",
+              border: "1px solid #6d44aa", boxShadow: "0 4px 24px #00000060",
+            }}>
+              <div style={{ color: "#b998f5", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 700 }}>
+                Collaboration link
+              </div>
+              {sessionsError ? (
+                <div role="alert" style={{ color: "#e0bfd3", fontSize: 13, margin: "14px 0" }}>
+                  Projects could not load. <button onClick={() => window.location.reload()} style={{ border: 0, padding: 0, background: "transparent", color: "#c9a6ff", textDecoration: "underline", cursor: "pointer" }}>Retry</button>
+                </div>
+              ) : !sessionsReady ? (
+                <p role="status" style={{ color: "#c8b6dc", fontSize: 13, margin: "14px 0" }}>Finding the project...</p>
+              ) : sharedSession ? (
+                <>
+                  <h2 style={{ color: "#f1e9ff", fontSize: 20, margin: "13px 0 4px" }}>{sharedSession.name}</h2>
+                  <p style={{ color: "#a994c0", fontSize: 12, lineHeight: 1.5, margin: "0 0 18px" }}>
+                    This project is open for editing. Join as {effectiveName} to make music together.
+                  </p>
+                  <button
+                    onClick={() => handleJoin(sharedSession.sessionId)}
+                    style={{ width: "100%", padding: "11px 14px", border: 0, borderRadius: 10, background: "linear-gradient(135deg, #7c3aed, #4f46e5)", color: "white", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    Join project →
+                  </button>
+                </>
+              ) : (
+                <>
+                  <h2 style={{ color: "#f1e9ff", fontSize: 18, margin: "13px 0 4px" }}>Project not found</h2>
+                  <p role="alert" style={{ color: "#bdaacc", fontSize: 12, lineHeight: 1.5, margin: "0 0 18px" }}>
+                    This link is invalid or the project is no longer available.
+                  </p>
+                </>
+              )}
+              <button onClick={onDismissSharedLink} style={{ width: "100%", marginTop: 12, padding: "9px 12px", borderRadius: 9, background: "transparent", border: "1px solid #46315f", color: "#bdaacc", cursor: "pointer" }}>
+                Back to projects
+              </button>
+            </div>
+          ) : !creating ? (
             /* ── Project list ── */
             <div style={{
               borderRadius: 16,
@@ -253,21 +301,24 @@ export default function JoinModal({ sessions, onJoin, onCreate }: Props) {
                 Choose a project
               </div>
 
-              {sessions.length === 0 ? (
+              {sessionsError ? (
+                <div role="alert" style={{ color: "#d7b8ca", fontSize: 13, textAlign: "center", padding: "12px 0" }}>
+                  Projects could not load. <button onClick={() => window.location.reload()} style={{ border: 0, padding: 0, background: "transparent", color: "#c9a6ff", textDecoration: "underline", cursor: "pointer" }}>Retry</button>
+                </div>
+              ) : sessions.length === 0 ? (
                 <div style={{ color: "#3a2a5a", fontSize: 13, textAlign: "center", padding: "12px 0" }}>
                   No projects yet — create one below
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
                   {sessions.map(s => (
-                    <button
+                    <div
                       key={s.sessionId}
-                      onClick={() => handleJoin(s.sessionId)}
                       style={{
                         display: "flex", alignItems: "center", justifyContent: "space-between",
                         borderRadius: 12, padding: "10px 14px",
                         background: "#0e0a1e", border: "1px solid #2a1e44",
-                        cursor: "pointer", textAlign: "left", transition: "all 0.15s",
+                        textAlign: "left", transition: "all 0.15s", gap: 8,
                       }}
                       onMouseEnter={e => {
                         e.currentTarget.style.borderColor = "#7c3aed";
@@ -280,30 +331,41 @@ export default function JoinModal({ sessions, onJoin, onCreate }: Props) {
                         e.currentTarget.style.boxShadow = "none";
                       }}
                     >
-                      <div>
-                        <div style={{ color: "#e8e0f8", fontWeight: 700, fontSize: 14 }}>{s.name}</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: "#e8e0f8", fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
                         <div style={{ color: "#6a5a8a", fontSize: 11, marginTop: 2 }}>
                           {s.tempoBpm} BPM · {s.timeSigTop}/{s.timeSigBottom}
                         </div>
                       </div>
-                      <span style={{
-                        color: "#7c3aed", fontSize: 11, fontWeight: 700,
-                        backgroundColor: "#7c3aed18", borderRadius: 6, padding: "3px 8px",
-                      }}>
-                        Join →
-                      </span>
-                    </button>
+                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        <button
+                          onClick={() => setSharingSession(s)}
+                          aria-label={`Share ${s.name}`}
+                          style={{ color: "#b59bd9", fontSize: 11, fontWeight: 700, backgroundColor: "#281b3d", border: "1px solid #4b3469", borderRadius: 6, padding: "5px 8px", cursor: "pointer" }}
+                        >
+                          Share
+                        </button>
+                        <button
+                          onClick={() => handleJoin(s.sessionId)}
+                          aria-label={`Join ${s.name}`}
+                          style={{ color: "#bb91ff", fontSize: 11, fontWeight: 700, backgroundColor: "#7c3aed18", border: "1px solid #5c3893", borderRadius: 6, padding: "5px 8px", cursor: "pointer" }}
+                        >
+                          Join →
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
 
               <button
+                disabled={!sessionsReady}
                 onClick={() => setCreating(true)}
                 style={{
                   width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
                   gap: 8, borderRadius: 12, padding: "10px",
                   border: "1px dashed #3a2a5a", color: "#6a4a9a", fontSize: 13,
-                  background: "transparent", cursor: "pointer", transition: "all 0.15s",
+                  background: "transparent", cursor: sessionsReady ? "pointer" : "not-allowed", opacity: sessionsReady ? 1 : 0.5, transition: "all 0.15s",
                 }}
                 onMouseEnter={e => {
                   e.currentTarget.style.borderColor = "#7c3aed";
@@ -391,6 +453,13 @@ export default function JoinModal({ sessions, onJoin, onCreate }: Props) {
           </div>
         </div>
       </div>
+      {sharingSession && (
+        <ShareDialog
+          sessionId={sharingSession.sessionId}
+          sessionName={sharingSession.name}
+          onClose={closeShare}
+        />
+      )}
     </>
   );
 }
