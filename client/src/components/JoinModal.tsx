@@ -1,465 +1,134 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "../spacetime/client";
 import ShareDialog from "./ShareDialog";
+import "./JoinModal.css";
 
 interface Props {
   sessions: Session[];
   sessionsReady: boolean;
   sessionsError: boolean;
   sharedLink: { hasLink: boolean; sessionId: number | null };
-  onJoin:   (username: string, sessionId: number) => void;
+  onJoin: (username: string, sessionId: number) => void;
   onCreate: (username: string, projectName: string) => void;
   onDismissSharedLink: () => void;
 }
 
-const PLACEHOLDER_NAMES = ["Jimi", "Billie", "Freddie", "Nina", "Miles", "Björk", "Prince", "Stevie"];
+type IconName = "music" | "grid" | "list" | "plus" | "search" | "arrow" | "share" | "close" | "spark";
 
-// ── Animated EQ bars ──────────────────────────────────────────────────────────
-function EqBars() {
-  const count = 32;
-  return (
-    <div
-      style={{
-        position: "absolute", bottom: 0, left: 0, right: 0, height: 80,
-        display: "flex", alignItems: "flex-end", gap: 3, padding: "0 24px",
-        opacity: 0.18, pointerEvents: "none",
-      }}
-    >
-      {Array.from({ length: count }).map((_, i) => (
-        <div
-          key={i}
-          style={{
-            flex: 1,
-            background: `linear-gradient(to top, #a855f7, #6366f1)`,
-            borderRadius: "3px 3px 0 0",
-            animation: `eq-bar ${0.6 + (i % 7) * 0.13}s ease-in-out ${(i * 0.04) % 0.5}s infinite alternate`,
-            height: `${20 + Math.sin(i * 1.3) * 15 + Math.cos(i * 0.7) * 12}px`,
-          }}
-        />
-      ))}
-    </div>
-  );
+function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
+  const paths: Record<IconName, React.ReactNode> = {
+    music: <><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></>,
+    grid: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
+    list: <><path d="M9 6h12M9 12h12M9 18h12" /><path d="M3 6h.01M3 12h.01M3 18h.01" strokeWidth="3" strokeLinecap="round" /></>,
+    plus: <path d="M12 5v14M5 12h14" />,
+    search: <><circle cx="11" cy="11" r="7" /><path d="m16 16 5 5" /></>,
+    arrow: <><path d="M5 12h14m-6-6 6 6-6 6" /></>,
+    share: <><path d="M12 16V3m-5 5 5-5 5 5" /><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></>,
+    close: <path d="M5 5 19 19M19 5 5 19" />,
+    spark: <><path d="m12 2 1.7 6.3L20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7L12 2Z" /><path d="m20 16 .7 2.3L23 19l-2.3.7L20 22l-.7-2.3L17 19l2.3-.7L20 16Z" /></>,
+  };
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
 
-// ── Floating music note decoration ───────────────────────────────────────────
-const FLOAT_NOTES = ["♩","♪","♫","♬","♭","♮","♯","𝄞","𝄢"];
-function FloatingNotes() {
-  const items = Array.from({ length: 16 }, (_, i) => ({
-    symbol: FLOAT_NOTES[i % FLOAT_NOTES.length],
-    x: 5 + (i * 6.1) % 92,
-    y: 5 + (i * 11.3) % 85,
-    size: 10 + (i * 3.7) % 22,
-    opacity: 0.04 + (i % 4) * 0.03,
-    rotation: (i * 23) % 60 - 30,
-    dur: 4 + (i % 5) * 1.2,
-    delay: (i * 0.4) % 3,
-  }));
-  return (
-    <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }}>
-      {items.map((n, i) => (
-        <div
-          key={i}
-          style={{
-            position: "absolute",
-            left: `${n.x}%`,
-            top: `${n.y}%`,
-            fontSize: n.size,
-            color: "#a78bfa",
-            opacity: n.opacity,
-            transform: `rotate(${n.rotation}deg)`,
-            animation: `float-note ${n.dur}s ease-in-out ${n.delay}s infinite alternate`,
-            userSelect: "none",
-          }}
-        >
-          {n.symbol}
-        </div>
-      ))}
+const PLACEHOLDER_NAMES = ["Jimi", "Billie", "Freddie", "Nina", "Miles", "Björk", "Prince", "Stevie"];
+const WAVE_HEIGHTS = Array.from({ length: 27 }, (_, index) => 16 + Math.round(Math.abs(Math.sin(index * 1.83) * Math.cos(index * 0.34)) * 53));
+
+function Waveform({ hero = false }: { hero?: boolean }) {
+  return <div className={hero ? "js-wave js-wave-hero" : "js-wave"} aria-hidden="true">{WAVE_HEIGHTS.map((height, index) => <span key={index} style={{ height: `${height}%` }} />)}</div>;
+}
+
+function ProjectArtwork({ sessionId }: { sessionId: number }) {
+  return <div className={`js-project-art js-art-${sessionId % 6}`} aria-hidden="true"><div className="js-art-orbit js-art-orbit-one" /><div className="js-art-orbit js-art-orbit-two" /><div className="js-art-mark"><Icon name="music" size={26} /></div><Waveform /></div>;
+}
+
+function CreateProjectDialog({ stageName, onClose, onCreate }: { stageName: string; onClose: () => void; onCreate: (name: string) => void }) {
+  const [name, setName] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null;
+    inputRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      if (event.key !== "Tab") return;
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled])");
+      if (!focusable?.length) return;
+      if (event.shiftKey && document.activeElement === focusable[0]) { event.preventDefault(); focusable[focusable.length - 1].focus(); }
+      else if (!event.shiftKey && document.activeElement === focusable[focusable.length - 1]) { event.preventDefault(); focusable[0].focus(); }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => { document.removeEventListener("keydown", onKeyDown); previousFocus?.focus(); };
+  }, [onClose]);
+
+  return <div className="js-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="js-create-dialog" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="js-create-title">
+      <button className="js-icon-button js-dialog-close" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
+      <div className="js-dialog-icon"><Icon name="music" size={25} /></div>
+      <h2 id="js-create-title">Create a new project</h2>
+      <p>Start a space for your next idea. You can invite collaborators once you’re in.</p>
+      <form onSubmit={event => { event.preventDefault(); onCreate(name.trim() || "My Jam Session"); }}>
+        <label htmlFor="js-project-name">Project name</label>
+        <input id="js-project-name" ref={inputRef} value={name} onChange={event => setName(event.target.value)} placeholder="My Jam Session" maxLength={80} />
+        <div className="js-create-as">You’ll join as <strong>{stageName}</strong></div>
+        <div className="js-dialog-actions"><button className="js-button js-button-secondary" type="button" onClick={onClose}>Cancel</button><button className="js-button js-button-primary" type="submit">Create & open <Icon name="arrow" size={16} /></button></div>
+      </form>
     </div>
-  );
+  </div>;
 }
 
 export default function JoinModal({ sessions, sessionsReady, sessionsError, sharedLink, onJoin, onCreate, onDismissSharedLink }: Props) {
-  const [username,    setUsername]    = useState("");
-  const [creating,    setCreating]    = useState(false);
-  const [projectName, setProjectName] = useState("");
+  const [username, setUsername] = useState("");
+  const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [creating, setCreating] = useState(false);
   const [sharingSession, setSharingSession] = useState<Session | null>(null);
-  const closeShare = useCallback(() => setSharingSession(null), []);
   const placeholder = useRef(PLACEHOLDER_NAMES[Math.floor(Math.random() * PLACEHOLDER_NAMES.length)]).current;
-
+  const closeShare = useCallback(() => setSharingSession(null), []);
+  const closeCreate = useCallback(() => setCreating(false), []);
   const effectiveName = username.trim() || placeholder;
-  const sharedSession = sessions.find(s => s.sessionId === sharedLink.sessionId);
-
+  const sharedSession = sessions.find(session => session.sessionId === sharedLink.sessionId);
+  const visibleSessions = [...sessions].sort((a, b) => b.sessionId - a.sessionId).filter(session => session.name.toLowerCase().includes(search.trim().toLowerCase()));
+  const canCreate = sessionsReady && !sessionsError;
   const handleJoin = (sessionId: number) => onJoin(effectiveName, sessionId);
 
-  const handleCreate = (e: React.FormEvent) => {
-    e.preventDefault();
-    onCreate(effectiveName, projectName.trim() || "My Jam Session");
-  };
+  return <div className="js-workspace">
+    <aside className="js-sidebar">
+      <div className="js-brand"><span className="js-brand-icon"><Icon name="music" size={21} /></span><span>JamSpace</span><span className="js-brand-version">1.1</span></div>
+      <div className="js-sidebar-section-label">WORKSPACE</div>
+      <nav aria-label="Workspace navigation" className="js-sidebar-nav">
+        <button className={`js-nav-item ${sharedLink.hasLink ? "" : "js-nav-item-active"}`} onClick={sharedLink.hasLink ? onDismissSharedLink : undefined} aria-current={!sharedLink.hasLink ? "page" : undefined}><Icon name="grid" size={17} /> Projects</button>
+        <button className="js-nav-item" disabled={!canCreate} onClick={() => { if (sharedLink.hasLink) onDismissSharedLink(); setCreating(true); }}><Icon name="plus" size={17} /> New project</button>
+      </nav>
+      <div className="js-sidebar-bottom"><div className="js-access-note"><span className="js-access-dot" /><strong>Open collaboration</strong><p>Projects in this prototype are visible and editable by anyone.</p></div><div className="js-sidebar-footer">Make something together.</div></div>
+    </aside>
 
-  return (
-    <>
-      {/* ── Global keyframe styles ── */}
-      <style>{`
-        @keyframes eq-bar {
-          from { transform: scaleY(0.4); }
-          to   { transform: scaleY(1); }
-        }
-        @keyframes float-note {
-          from { transform: translateY(0px) rotate(var(--r, 0deg)); }
-          to   { transform: translateY(-14px) rotate(var(--r, 0deg)); }
-        }
-        @keyframes glow-pulse {
-          0%, 100% { opacity: 0.35; }
-          50%       { opacity: 0.55; }
-        }
-        @keyframes spin-slow {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
-        }
-      `}</style>
+    <main className="js-main">
+      <header className="js-topbar"><div className="js-breadcrumb"><span>Workspace</span><span className="js-breadcrumb-slash">/</span><strong>{sharedLink.hasLink ? "Invitation" : "Projects"}</strong></div>{!sharedLink.hasLink && <label className="js-stage-name"><span>Stage name</span><input value={username} onChange={event => setUsername(event.target.value)} placeholder={placeholder} aria-label="Your stage name" maxLength={40} /></label>}</header>
 
-      <div
-        style={{
-          minHeight: "100vh",
-          background: "radial-gradient(ellipse 80% 70% at 50% 30%, #1a0a35 0%, #0c0718 40%, #080510 100%)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        {/* Ambient glow blobs */}
-        <div style={{
-          position: "absolute", top: "8%", left: "15%",
-          width: 420, height: 320, borderRadius: "50%",
-          background: "radial-gradient(circle, #7c3aed44 0%, transparent 70%)",
-          animation: "glow-pulse 4s ease-in-out infinite",
-          pointerEvents: "none",
-        }} />
-        <div style={{
-          position: "absolute", bottom: "12%", right: "10%",
-          width: 350, height: 280, borderRadius: "50%",
-          background: "radial-gradient(circle, #ec489933 0%, transparent 70%)",
-          animation: "glow-pulse 5.5s ease-in-out 1.5s infinite",
-          pointerEvents: "none",
-        }} />
-        <div style={{
-          position: "absolute", top: "45%", right: "20%",
-          width: 240, height: 200, borderRadius: "50%",
-          background: "radial-gradient(circle, #3b82f629 0%, transparent 70%)",
-          animation: "glow-pulse 3.8s ease-in-out 0.8s infinite",
-          pointerEvents: "none",
-        }} />
-
-        {/* Floating music notes */}
-        <FloatingNotes />
-
-        {/* EQ bars at bottom */}
-        <EqBars />
-
-        {/* Vinyl record decoration */}
-        <div style={{
-          position: "absolute", top: "5%", right: "5%",
-          width: 160, height: 160, borderRadius: "50%",
-          border: "2px solid #ffffff0a",
-          background: "radial-gradient(circle at 50% 50%, #1a1a2e 30%, #0d0d18 60%, #1a1a2e 100%)",
-          animation: "spin-slow 18s linear infinite",
-          pointerEvents: "none",
-          opacity: 0.35,
-        }}>
-          {[0.15, 0.3, 0.45, 0.6, 0.75].map((r, i) => (
-            <div key={i} style={{
-              position: "absolute",
-              top: `${50 - r * 50}%`, left: `${50 - r * 50}%`,
-              width: `${r * 100}%`, height: `${r * 100}%`,
-              borderRadius: "50%",
-              border: "1px solid #ffffff08",
-            }} />
-          ))}
-          <div style={{
-            position: "absolute", top: "44%", left: "44%",
-            width: "12%", height: "12%",
-            borderRadius: "50%", backgroundColor: "#a855f755",
-          }} />
+      {sharedLink.hasLink ? <section className="js-invite-layout" aria-labelledby="js-invite-title">
+        <div className="js-invite-art"><div className="js-invite-art-glow" /><div className="js-invite-art-symbol"><Icon name="music" size={54} /></div><Waveform hero /></div>
+        <div className="js-invite-content"><div className="js-eyebrow"><Icon name="spark" size={15} /> COLLABORATION LINK</div>
+          {sessionsError ? <><h1 id="js-invite-title">Couldn’t load projects</h1><p>Check your connection and try again.</p><button className="js-button js-button-primary" onClick={() => window.location.reload()}>Retry</button></>
+            : !sessionsReady ? <><h1 id="js-invite-title">Finding your project…</h1><p>Just a moment while we connect to the workspace.</p></>
+              : sharedSession ? <><h1 id="js-invite-title">You’re invited to jam.</h1><p>Join <strong>{sharedSession.name}</strong> and make music together. This project is open for editing.</p><label className="js-invite-name" htmlFor="js-invite-stage-name">Your stage name</label><input id="js-invite-stage-name" className="js-invite-name-input" value={username} onChange={event => setUsername(event.target.value)} placeholder={placeholder} maxLength={40} autoFocus /><button className="js-button js-button-primary js-invite-join" onClick={() => handleJoin(sharedSession.sessionId)}>Join project <Icon name="arrow" size={17} /></button></>
+                : <><h1 id="js-invite-title">Project not found</h1><p>This link is invalid or the project is no longer available.</p></>}
+          <button className="js-text-button" onClick={onDismissSharedLink}>← Back to projects</button>
         </div>
+      </section> : <div className="js-content">
+        <section className="js-hero" aria-labelledby="js-hero-title"><div className="js-hero-content"><div className="js-eyebrow"><Icon name="spark" size={15} /> YOUR CREATIVE SPACE</div><h1 id="js-hero-title">Make music, together.</h1><p>Start a new idea, pick up a session, and invite people to play along.</p><button className="js-button js-button-primary" disabled={!canCreate} onClick={() => setCreating(true)}><Icon name="plus" size={18} /> Create project</button></div><div className="js-hero-visual" aria-hidden="true"><div className="js-hero-disc js-hero-disc-back" /><div className="js-hero-disc js-hero-disc-front"><div className="js-hero-disc-center" /></div><Waveform hero /></div></section>
 
-        {/* Waveform line decoration */}
-        <svg
-          style={{ position: "absolute", top: "22%", left: 0, right: 0, opacity: 0.06, pointerEvents: "none" }}
-          width="100%" height="40" viewBox="0 0 1200 40" preserveAspectRatio="none"
-        >
-          <polyline
-            points={Array.from({ length: 120 }, (_, i) => `${i * 10},${20 + Math.sin(i * 0.5) * 14 + Math.sin(i * 1.3) * 6}`).join(" ")}
-            fill="none" stroke="#a78bfa" strokeWidth="1.5"
-          />
-        </svg>
+        <section className="js-projects" aria-labelledby="js-projects-title"><div className="js-projects-heading"><div><div className="js-section-kicker">THE WORKSPACE</div><h2 id="js-projects-title">All projects <span>{sessionsReady ? sessions.length : ""}</span></h2><p>Every session in the current JamSpace workspace.</p></div><button className="js-button js-button-outline js-create-top" disabled={!canCreate} onClick={() => setCreating(true)}><Icon name="plus" size={17} /> New project</button></div>
+          <div className="js-project-toolbar"><label className="js-search"><Icon name="search" size={17} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search projects" aria-label="Search projects" /></label><div className="js-view-toggle" role="group" aria-label="Project view"><button aria-label="Grid view" aria-pressed={viewMode === "grid"} className={viewMode === "grid" ? "active" : ""} onClick={() => setViewMode("grid")}><Icon name="grid" size={17} /></button><button aria-label="List view" aria-pressed={viewMode === "list"} className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")}><Icon name="list" size={18} /></button></div></div>
+          {sessionsError ? <div className="js-empty-state" role="alert"><h3>Projects couldn’t load</h3><p>Check your connection and try again.</p><button className="js-button js-button-secondary" onClick={() => window.location.reload()}>Retry</button></div>
+            : !sessionsReady ? <div className="js-project-grid" aria-label="Loading projects">{[0, 1, 2].map(index => <div className="js-project-skeleton" key={index} />)}</div>
+              : visibleSessions.length === 0 ? <div className="js-empty-state"><div className="js-empty-icon"><Icon name={search ? "search" : "music"} size={26} /></div><h3>{search ? "No matching projects" : "No projects yet"}</h3><p>{search ? "Try another name or clear your search." : "Create the first space for a new idea."}</p>{search ? <button className="js-button js-button-secondary" onClick={() => setSearch("")}>Clear search</button> : <button className="js-button js-button-primary" onClick={() => setCreating(true)}>Create project</button>}</div>
+                : <div className={`js-project-grid ${viewMode === "list" ? "js-project-list" : ""}`}>{visibleSessions.map(session => <article className="js-project-card" key={session.sessionId}><ProjectArtwork sessionId={session.sessionId} /><div className="js-project-card-content"><div className="js-project-card-label">MUSIC PROJECT</div><h3 title={session.name}>{session.name}</h3><div className="js-project-meta"><span>{session.tempoBpm} BPM</span><span className="js-meta-dot" /><span>{session.timeSigTop}/{session.timeSigBottom} time</span></div></div><div className="js-project-actions"><button className="js-card-share" onClick={() => setSharingSession(session)} aria-label={`Share ${session.name}`}><Icon name="share" size={16} /><span>Share</span></button><button className="js-card-open" onClick={() => handleJoin(session.sessionId)} aria-label={`Open ${session.name}`}>Open <Icon name="arrow" size={16} /></button></div></article>)}</div>}
+        </section>
+      </div>}
+    </main>
 
-        {/* ── Main card ── */}
-        <div style={{ width: "calc(100% - 48px)", maxWidth: 420, margin: "0 24px", position: "relative", zIndex: 10 }}>
-
-          {/* Header */}
-          <div style={{ textAlign: "center", marginBottom: 28 }}>
-            <h1 style={{
-              fontSize: 36, fontWeight: 800, color: "#fff",
-              letterSpacing: "-0.02em", margin: 0,
-              background: "linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%)",
-              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-            }}>
-              JamSpace
-            </h1>
-            <p style={{ color: "#7c6a9a", marginTop: 6, fontSize: 13, letterSpacing: "0.04em" }}>
-              Real-time collaborative music · SpacetimeDB
-            </p>
-            {/* Horizontal line with music accent */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "16px auto", maxWidth: 200 }}>
-              <div style={{ flex: 1, height: 1, background: "linear-gradient(to right, transparent, #3a2a5a)" }} />
-              <span style={{ color: "#5a3a7a", fontSize: 14 }}>♬</span>
-              <div style={{ flex: 1, height: 1, background: "linear-gradient(to left, transparent, #3a2a5a)" }} />
-            </div>
-          </div>
-
-          {/* Username */}
-          <div style={{
-            borderRadius: 16,
-            padding: "16px 18px",
-            marginBottom: 12,
-            background: "linear-gradient(135deg, #1a1030 0%, #120e22 100%)",
-            border: "1px solid #2e1f50",
-            boxShadow: "0 4px 24px #00000060",
-          }}>
-            <label style={{ color: "#7a6a9a", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 600 }}>
-              Your stage name
-            </label>
-            <input
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              placeholder={placeholder}
-              style={{
-                marginTop: 6, width: "100%", borderRadius: 10,
-                padding: "10px 14px", outline: "none",
-                backgroundColor: "#0e0a1e", color: "#e8e0f8", fontSize: 14,
-                border: "1px solid #2a1e44", boxSizing: "border-box",
-                transition: "border-color 0.2s",
-              }}
-              onFocus={e => (e.target.style.borderColor = "#7c3aed")}
-              onBlur={e => (e.target.style.borderColor = "#2a1e44")}
-              autoFocus
-            />
-          </div>
-
-          {sharedLink.hasLink ? (
-            <div style={{
-              borderRadius: 16, padding: "20px 18px",
-              background: "linear-gradient(135deg, #24143c 0%, #120e22 100%)",
-              border: "1px solid #6d44aa", boxShadow: "0 4px 24px #00000060",
-            }}>
-              <div style={{ color: "#b998f5", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 700 }}>
-                Collaboration link
-              </div>
-              {sessionsError ? (
-                <div role="alert" style={{ color: "#e0bfd3", fontSize: 13, margin: "14px 0" }}>
-                  Projects could not load. <button onClick={() => window.location.reload()} style={{ border: 0, padding: 0, background: "transparent", color: "#c9a6ff", textDecoration: "underline", cursor: "pointer" }}>Retry</button>
-                </div>
-              ) : !sessionsReady ? (
-                <p role="status" style={{ color: "#c8b6dc", fontSize: 13, margin: "14px 0" }}>Finding the project...</p>
-              ) : sharedSession ? (
-                <>
-                  <h2 style={{ color: "#f1e9ff", fontSize: 20, margin: "13px 0 4px" }}>{sharedSession.name}</h2>
-                  <p style={{ color: "#a994c0", fontSize: 12, lineHeight: 1.5, margin: "0 0 18px" }}>
-                    This project is open for editing. Join as {effectiveName} to make music together.
-                  </p>
-                  <button
-                    onClick={() => handleJoin(sharedSession.sessionId)}
-                    style={{ width: "100%", padding: "11px 14px", border: 0, borderRadius: 10, background: "linear-gradient(135deg, #7c3aed, #4f46e5)", color: "white", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
-                  >
-                    Join project →
-                  </button>
-                </>
-              ) : (
-                <>
-                  <h2 style={{ color: "#f1e9ff", fontSize: 18, margin: "13px 0 4px" }}>Project not found</h2>
-                  <p role="alert" style={{ color: "#bdaacc", fontSize: 12, lineHeight: 1.5, margin: "0 0 18px" }}>
-                    This link is invalid or the project is no longer available.
-                  </p>
-                </>
-              )}
-              <button onClick={onDismissSharedLink} style={{ width: "100%", marginTop: 12, padding: "9px 12px", borderRadius: 9, background: "transparent", border: "1px solid #46315f", color: "#bdaacc", cursor: "pointer" }}>
-                Back to projects
-              </button>
-            </div>
-          ) : !creating ? (
-            /* ── Project list ── */
-            <div style={{
-              borderRadius: 16,
-              padding: "16px 18px",
-              background: "linear-gradient(135deg, #1a1030 0%, #120e22 100%)",
-              border: "1px solid #2e1f50",
-              boxShadow: "0 4px 24px #00000060",
-            }}>
-              <div style={{ color: "#7a6a9a", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 600, marginBottom: 12 }}>
-                Choose a project
-              </div>
-
-              {sessionsError ? (
-                <div role="alert" style={{ color: "#d7b8ca", fontSize: 13, textAlign: "center", padding: "12px 0" }}>
-                  Projects could not load. <button onClick={() => window.location.reload()} style={{ border: 0, padding: 0, background: "transparent", color: "#c9a6ff", textDecoration: "underline", cursor: "pointer" }}>Retry</button>
-                </div>
-              ) : sessions.length === 0 ? (
-                <div style={{ color: "#3a2a5a", fontSize: 13, textAlign: "center", padding: "12px 0" }}>
-                  No projects yet — create one below
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
-                  {sessions.map(s => (
-                    <div
-                      key={s.sessionId}
-                      style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        borderRadius: 12, padding: "10px 14px",
-                        background: "#0e0a1e", border: "1px solid #2a1e44",
-                        textAlign: "left", transition: "all 0.15s", gap: 8,
-                      }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.borderColor = "#7c3aed";
-                        e.currentTarget.style.background = "#170f2a";
-                        e.currentTarget.style.boxShadow = "0 0 18px #7c3aed28";
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.borderColor = "#2a1e44";
-                        e.currentTarget.style.background = "#0e0a1e";
-                        e.currentTarget.style.boxShadow = "none";
-                      }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ color: "#e8e0f8", fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
-                        <div style={{ color: "#6a5a8a", fontSize: 11, marginTop: 2 }}>
-                          {s.tempoBpm} BPM · {s.timeSigTop}/{s.timeSigBottom}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                        <button
-                          onClick={() => setSharingSession(s)}
-                          aria-label={`Share ${s.name}`}
-                          style={{ color: "#b59bd9", fontSize: 11, fontWeight: 700, backgroundColor: "#281b3d", border: "1px solid #4b3469", borderRadius: 6, padding: "5px 8px", cursor: "pointer" }}
-                        >
-                          Share
-                        </button>
-                        <button
-                          onClick={() => handleJoin(s.sessionId)}
-                          aria-label={`Join ${s.name}`}
-                          style={{ color: "#bb91ff", fontSize: 11, fontWeight: 700, backgroundColor: "#7c3aed18", border: "1px solid #5c3893", borderRadius: 6, padding: "5px 8px", cursor: "pointer" }}
-                        >
-                          Join →
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <button
-                disabled={!sessionsReady}
-                onClick={() => setCreating(true)}
-                style={{
-                  width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
-                  gap: 8, borderRadius: 12, padding: "10px",
-                  border: "1px dashed #3a2a5a", color: "#6a4a9a", fontSize: 13,
-                  background: "transparent", cursor: sessionsReady ? "pointer" : "not-allowed", opacity: sessionsReady ? 1 : 0.5, transition: "all 0.15s",
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.borderColor = "#7c3aed";
-                  e.currentTarget.style.color = "#a78bfa";
-                  e.currentTarget.style.background = "#7c3aed10";
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.borderColor = "#3a2a5a";
-                  e.currentTarget.style.color = "#6a4a9a";
-                  e.currentTarget.style.background = "transparent";
-                }}
-              >
-                <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
-                <span style={{ fontWeight: 600 }}>New Project</span>
-              </button>
-            </div>
-          ) : (
-            /* ── Create form ── */
-            <form
-              onSubmit={handleCreate}
-              style={{
-                borderRadius: 16, padding: "16px 18px",
-                background: "linear-gradient(135deg, #1a1030 0%, #120e22 100%)",
-                border: "1px solid #2e1f50",
-                boxShadow: "0 4px 24px #00000060",
-                display: "flex", flexDirection: "column", gap: 14,
-              }}
-            >
-              <div>
-                <label style={{ color: "#7a6a9a", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 600 }}>
-                  Project name
-                </label>
-                <input
-                  value={projectName}
-                  onChange={e => setProjectName(e.target.value)}
-                  placeholder="My Jam Session"
-                  style={{
-                    marginTop: 6, width: "100%", borderRadius: 10,
-                    padding: "10px 14px", outline: "none",
-                    backgroundColor: "#0e0a1e", color: "#e8e0f8", fontSize: 14,
-                    border: "1px solid #2a1e44", boxSizing: "border-box",
-                    transition: "border-color 0.2s",
-                  }}
-                  onFocus={e => (e.target.style.borderColor = "#7c3aed")}
-                  onBlur={e => (e.target.style.borderColor = "#2a1e44")}
-                  autoFocus
-                />
-              </div>
-              <div style={{ display: "flex", gap: 10 }}>
-                <button
-                  type="button"
-                  onClick={() => setCreating(false)}
-                  style={{
-                    flex: 1, padding: "10px", borderRadius: 10, fontSize: 13,
-                    background: "#0e0a1e", color: "#6a5a8a", border: "1px solid #2a1e44",
-                    cursor: "pointer", transition: "all 0.15s",
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.color = "#a090c0")}
-                  onMouseLeave={e => (e.currentTarget.style.color = "#6a5a8a")}
-                >
-                  ← Back
-                </button>
-                <button
-                  type="submit"
-                  style={{
-                    flex: 2, padding: "10px", borderRadius: 10,
-                    color: "white", fontWeight: 700, fontSize: 14,
-                    background: "linear-gradient(135deg, #7c3aed, #4f46e5)",
-                    border: "none", cursor: "pointer",
-                    boxShadow: "0 4px 20px #7c3aed50",
-                    transition: "opacity 0.15s",
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.opacity = "0.88")}
-                  onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
-                >
-                  Create &amp; Join →
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* Footer tag */}
-          <div style={{ textAlign: "center", marginTop: 20, color: "#3a2a50", fontSize: 11, letterSpacing: "0.06em" }}>
-            ♫ &nbsp; Powered by SpacetimeDB &nbsp; ♫
-          </div>
-        </div>
-      </div>
-      {sharingSession && (
-        <ShareDialog
-          sessionId={sharingSession.sessionId}
-          sessionName={sharingSession.name}
-          onClose={closeShare}
-        />
-      )}
-    </>
-  );
+    {creating && <CreateProjectDialog stageName={effectiveName} onClose={closeCreate} onCreate={projectName => onCreate(effectiveName, projectName)} />}
+    {sharingSession && <ShareDialog sessionId={sharingSession.sessionId} sessionName={sharingSession.name} onClose={closeShare} />}
+  </div>;
 }
