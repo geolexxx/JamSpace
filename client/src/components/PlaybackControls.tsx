@@ -297,7 +297,8 @@ export default function PlaybackControls({
       </div>
 
       {/* People who have joined this project */}
-      <div className="transport-people" style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+      <div className="transport-people" aria-label="Online collaborators" style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: "#4ade80", marginRight: 2 }}>Live</span>
         {users.map(u => {
           const hex   = u.identity.toHexString();
           const color = userColor(hex);
@@ -305,7 +306,7 @@ export default function PlaybackControls({
           return (
             <div
               key={hex}
-              title={u.username + (isMe ? " (you)" : "")}
+              title={u.username + (isMe ? " (you)" : "") + " · online now"}
               style={{
                 width: 24, height: 24, borderRadius: "50%",
                 backgroundColor: color + "22",
