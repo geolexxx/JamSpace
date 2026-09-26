@@ -1,5 +1,6 @@
 import * as Tone from "tone";
 import { triggerDrum, triggerMelody } from "./instruments";
+import { buildTimeline } from "./timeline";
 import type { Note, Track, ArrangementBlock, Pattern } from "../spacetime/client";
 
 // ── Time signature helpers ─────────────────────────────────────────────────────
@@ -58,48 +59,26 @@ export function startPlayback(
   ticker = new Tone.Loop((time) => {
     const spb = liveData.stepsPerBar;
 
-    const allSorted = [...liveData.arrangement].sort((a, b) => a.position - b.position);
-    const playable  = allSorted.filter(b =>
-      liveData.notes.some(n => n.patternId === b.patternId)
-    );
+    const timeline = buildTimeline(liveData.arrangement, liveData.patterns, spb);
 
-    if (playable.length === 0) {
+    if (timeline.blocks.length === 0) {
       Tone.getDraw().schedule(() => onStep(0, -1), time);
       absoluteStep++;
       return;
     }
-
-    // Build cumulative step offsets: each block spans numBars * stepsPerBar steps
-    const offsets: number[] = [];
-    let totalSteps = 0;
-    for (const block of playable) {
-      offsets.push(totalSteps);
-      const pat = liveData.patterns.find(p => p.patternId === block.patternId);
-      const blockSteps = (pat?.numBars ?? 1) * spb;
-      totalSteps += blockSteps;
-    }
-
-    const wrapped = absoluteStep % totalSteps;
-
-    // Find which playable block we're in
-    let pIdx = 0;
-    for (let i = offsets.length - 1; i >= 0; i--) {
-      if (wrapped >= offsets[i]) { pIdx = i; break; }
-    }
-    const localStep = wrapped - offsets[pIdx];
-    const block = playable[pIdx];
-
-    // Map back to full sorted index for UI
-    const allIdx = allSorted.findIndex(b => b.blockId === block.blockId);
+    const wrapped = absoluteStep % timeline.totalSteps;
+    const current = [...timeline.blocks].reverse().find(block => wrapped >= block.startStep)!;
+    const localStep = wrapped - current.startStep;
 
     // Trigger notes
     const stepDuration = Tone.Time("16n").toSeconds();
     for (const note of liveData.notes) {
-      if (note.patternId !== block.patternId || note.step !== localStep) continue;
+      if (note.patternId !== current.block.patternId || note.step !== localStep) continue;
       const track = liveData.tracks.find(t => t.trackId === note.trackId);
       if (!track || track.isMuted) continue;
 
-      const vel = Math.max(1, Math.round(note.velocity * track.volume));
+      const vel = Math.min(127, Math.round(note.velocity * track.volume));
+      if (vel <= 0) continue;
       if (track.instrument === "drums") {
         triggerDrum(note.pitch, vel, time);
       } else {
@@ -107,7 +86,7 @@ export function startPlayback(
       }
     }
 
-    Tone.getDraw().schedule(() => onStep(localStep, allIdx), time);
+    Tone.getDraw().schedule(() => onStep(localStep, current.sortedIndex), time);
     absoluteStep++;
   }, "16n");
 

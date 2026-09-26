@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import PlaybackControls from "./PlaybackControls";
 import ShareDialog from "./ShareDialog";
+import ExportDialog from "./ExportDialog";
 import PatternArrangement from "./PatternArrangement";
 import BeatRuler, { CELL_W, RULER_H } from "./BeatRuler";
 import TrackHeader, { HEADER_W } from "./TrackHeader";
@@ -48,7 +49,9 @@ export default function SessionView({
   const [samplersReady,   setSamplersReady]   = useState(isSamplersReady);
   const [showAddTrack,    setShowAddTrack]    = useState(false);
   const [showShare,       setShowShare]       = useState(false);
+  const [showExport,      setShowExport]      = useState(false);
   const closeShare = useCallback(() => setShowShare(false), []);
+  const closeExport = useCallback(() => setShowExport(false), []);
 
   // Personal vs Sync mode (persisted in localStorage)
   const [playbackMode, setPlaybackMode] = useState<"personal" | "sync">(
@@ -102,7 +105,7 @@ export default function SessionView({
           setActiveStep(step);
           setActiveBlockIdx(blockIdx);
           if (blockIdx >= 0) {
-            const sorted = [...arrangementRef.current].sort((a, b) => a.position - b.position);
+            const sorted = [...arrangementRef.current].sort((a, b) => a.position - b.position || a.blockId - b.blockId);
             const block  = sorted[blockIdx];
             if (block && block.patternId !== activePatternIdRef.current) {
               setActivePatternId(block.patternId);
@@ -332,6 +335,7 @@ export default function SessionView({
         onToggleMode={handleToggleMode}
         onBackToHome={onBackToHome}
         onShare={() => setShowShare(true)}
+        onExport={() => setShowExport(true)}
         users={users}
         tracks={tracks}
         myIdentity={myIdentity}
@@ -339,6 +343,9 @@ export default function SessionView({
 
       {showShare && (
         <ShareDialog sessionId={session.sessionId} sessionName={session.name} onClose={closeShare} />
+      )}
+      {showExport && (
+        <ExportDialog session={session} tracks={tracks} notes={notes} patterns={patterns} arrangement={arrangement} onClose={closeExport} />
       )}
 
 

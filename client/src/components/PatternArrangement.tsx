@@ -27,7 +27,7 @@ export default function PatternArrangement({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const sorted = [...arrangement].sort((a, b) => a.position - b.position);
+  const sorted = [...arrangement].sort((a, b) => a.position - b.position || a.blockId - b.blockId);
 
   return (
     <div

@@ -21,6 +21,7 @@ interface Props {
   onToggleMode:    () => void;
   onBackToHome:    () => void;
   onShare:         () => void;
+  onExport:        () => void;
 }
 
 const TIME_SIGS = [
@@ -42,7 +43,7 @@ export default function PlaybackControls({
   isPlaying, tempoBpm, sessionName, activeStep, stepsPerBeat,
   timeSigTop, timeSigBottom, users, tracks, myIdentity,
   playbackMode, onTogglePlay, onBpmChange, onTimeSigChange, onLoadDemo, onToggleMode,
-  onBackToHome, onShare,
+  onBackToHome, onShare, onExport,
 }: Props) {
   const [showDemoMenu, setShowDemoMenu]   = useState(false);
   const [showTimeSig,  setShowTimeSig]    = useState(false);
@@ -354,6 +355,14 @@ export default function PlaybackControls({
         )}
       </div>
 
+      <button
+        className="transport-export"
+        onClick={onExport}
+        aria-label="Export project as WAV"
+        style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexShrink: 0, padding: "8px 12px", border: "1px solid #554575", borderRadius: 8, background: "#211a30", color: "#e0d3fa", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+      >
+        <span aria-hidden="true">↓</span> <span>Export</span>
+      </button>
       <button
         className="transport-share"
         onClick={onShare}

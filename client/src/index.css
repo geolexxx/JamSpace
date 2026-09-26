@@ -34,6 +34,7 @@ body {
   }
   .transport-home,
   .transport-spacer,
+  .transport-export,
   .transport-share { order: 0; }
   .transport-break {
     display: block !important;
