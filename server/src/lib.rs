@@ -1,4 +1,5 @@
-use spacetimedb::{table, reducer, ReducerContext, Identity, Timestamp, Table};
+use spacetimedb::{table, reducer, ReducerContext, Identity, SpacetimeType, Timestamp, Table};
+use std::collections::HashSet;
 
 // ── Tables ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,16 @@ pub struct Note {
     pub velocity: u8,
     pub duration: u16,  // in steps; 1 = one 16th note
     pub creator_identity: Identity,
+}
+
+/// A note supplied for a private melody preview or accepted continuation.
+/// Steps are absolute positions within the pattern, not relative to a bar.
+#[derive(SpacetimeType, Clone, PartialEq, Eq)]
+pub struct ContinuationNote {
+    pub step: u16,
+    pub pitch: u8,
+    pub velocity: u8,
+    pub duration: u16,
 }
 
 #[table(name = user_presence, public)]
@@ -238,6 +249,113 @@ pub fn add_note(ctx: &ReducerContext, pattern_id: u32, track_id: u32, step: u16,
             creator_identity: ctx.sender,
         });
     }
+}
+
+/// Accept four privately previewed bars in one transaction. Rechecking the
+/// source and destination here prevents a stale candidate from erasing or
+/// mixing with work a collaborator added while the candidate was generated.
+#[reducer]
+pub fn apply_melody_continuation(
+    ctx: &ReducerContext,
+    pattern_id: u32,
+    track_id: u32,
+    source_bar: u32,
+    expected_num_bars: u32,
+    expected_steps_per_bar: u32,
+    expected_source: Vec<ContinuationNote>,
+    notes: Vec<ContinuationNote>,
+) -> Result<(), String> {
+    let pattern = ctx.db.pattern().pattern_id().find(&pattern_id)
+        .ok_or("Pattern not found")?;
+    let track = ctx.db.track().track_id().find(&track_id)
+        .ok_or("Track not found")?;
+    if pattern.session_id != track.session_id || track.instrument == "drums" {
+        return Err("Choose a melodic track in this project".to_string());
+    }
+    if pattern.num_bars != expected_num_bars {
+        return Err("The pattern changed. Generate a fresh continuation".to_string());
+    }
+    let required_bars = source_bar.checked_add(5)
+        .ok_or("Invalid source bar")?;
+    if source_bar >= pattern.num_bars || required_bars > 32 {
+        return Err("The selected bar cannot be continued by four bars".to_string());
+    }
+    let session = ctx.db.session().session_id().find(&pattern.session_id)
+        .ok_or("Project not found")?;
+    let steps_per_bar = match session.time_sig_bottom {
+        4 => session.time_sig_top.checked_mul(4),
+        8 => session.time_sig_top.checked_mul(2),
+        _ => None,
+    }.filter(|steps| *steps > 0 && *steps <= 64)
+        .ok_or("Unsupported time signature")?;
+    if steps_per_bar != expected_steps_per_bar {
+        return Err("The time signature changed. Generate again".to_string());
+    }
+    let source_start = source_bar * steps_per_bar;
+    let destination_start = (source_bar + 1) * steps_per_bar;
+    let destination_end = required_bars * steps_per_bar;
+    if destination_end > u16::MAX as u32 {
+        return Err("The continuation exceeds the step limit".to_string());
+    }
+    if expected_source.is_empty() || expected_source.len() > 64 {
+        return Err("Choose a bar with melody notes".to_string());
+    }
+    if notes.is_empty() || notes.len() > 128 {
+        return Err("The continuation has an invalid number of notes".to_string());
+    }
+
+    // Compare all musical fields, not just IDs: an edited note retains its ID.
+    let mut actual_source: Vec<ContinuationNote> = Vec::new();
+    for note in ctx.db.note().pattern_id().filter(&pattern_id) {
+        if note.track_id != track_id { continue; }
+        let step = u32::from(note.step);
+        if step >= source_start && step < destination_start {
+            actual_source.push(ContinuationNote {
+                step: note.step, pitch: note.pitch,
+                velocity: note.velocity, duration: note.duration,
+            });
+        }
+        if step < destination_end && step + u32::from(note.duration) > destination_start {
+            return Err("Another musician edited these bars. Generate again".to_string());
+        }
+    }
+    let signature = |note: &ContinuationNote| (note.step, note.pitch, note.velocity, note.duration);
+    actual_source.sort_by_key(&signature);
+    let mut expected_source = expected_source;
+    expected_source.sort_by_key(&signature);
+    if actual_source != expected_source {
+        return Err("The source melody changed. Generate again".to_string());
+    }
+
+    let allowed_pitches: &[u8] = match track.instrument.as_str() {
+        "bass" => &[48, 50, 52, 53, 55, 57, 59, 60],
+        "synth" | "lead" => &[60, 62, 64, 65, 67, 69, 71, 72],
+        _ => return Err("Unsupported melody instrument".to_string()),
+    };
+    let mut unique_notes = HashSet::new();
+    for note in &notes {
+        let start = u32::from(note.step);
+        let end = start + u32::from(note.duration);
+        if start < destination_start || start >= destination_end ||
+            note.duration == 0 || end > destination_end ||
+            !allowed_pitches.contains(&note.pitch) ||
+            note.velocity == 0 || note.velocity > 127 ||
+            !unique_notes.insert((note.step, note.pitch)) {
+            return Err("The continuation contains invalid or duplicate notes".to_string());
+        }
+    }
+
+    if pattern.num_bars < required_bars {
+        ctx.db.pattern().pattern_id().update(Pattern { num_bars: required_bars, ..pattern });
+    }
+    for note in notes {
+        ctx.db.note().insert(Note {
+            note_id: 0, pattern_id, track_id, step: note.step,
+            pitch: note.pitch, velocity: note.velocity, duration: note.duration,
+            creator_identity: ctx.sender,
+        });
+    }
+    Ok(())
 }
 
 #[reducer]

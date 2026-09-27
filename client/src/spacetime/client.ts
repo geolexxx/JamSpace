@@ -11,8 +11,8 @@ import UserPresenceRowSchema from "../module_bindings/user_presence_table";
 import PatternRowSchema from "../module_bindings/pattern_table";
 import ArrangementBlockRowSchema from "../module_bindings/arrangement_block_table";
 
-export const STDB_URI = "wss://maincloud.spacetimedb.com";
-export const MODULE_NAME = "jamspace";
+export const STDB_URI = import.meta.env.VITE_STDB_URI ?? "wss://maincloud.spacetimedb.com";
+export const MODULE_NAME = import.meta.env.VITE_MODULE_NAME ?? "jamspace";
 
 // ── Row types (inferred from generated schemas) ───────────────────────────────
 export type Session         = Infer<typeof SessionRowSchema>;

@@ -2,11 +2,14 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import PlaybackControls from "./PlaybackControls";
 import ShareDialog from "./ShareDialog";
 import ExportDialog from "./ExportDialog";
+import ContinueMelodyDialog from "./ContinueMelodyDialog";
 import PatternArrangement from "./PatternArrangement";
 import BeatRuler, { CELL_W, RULER_H } from "./BeatRuler";
 import TrackHeader, { HEADER_W } from "./TrackHeader";
 import DrumGrid from "./DrumGrid";
-import StepGrid from "./StepGrid";
+import StepGrid, { melodyGridPitches } from "./StepGrid";
+import { generateMelodyContinuations, type MelodyContinuation, type MelodyNote } from "../ai/continueMelody";
+import { notesForMelodyPreview, playMelodyPreview } from "../audio/melodyPreview";
 import {
   startPlayback, stopPlayback, updateBpm, ensureAudioContext, updateLiveData,
   calcStepsPerBar, calcStepsPerBeat,
@@ -27,6 +30,27 @@ const INSTRUMENT_OPTIONS = [
   { value: "synth", emoji: "🎹", label: "Synth" },
   { value: "lead",  emoji: "🎺", label: "Lead" },
 ];
+
+interface MelodyGenerationSnapshot {
+  patternId: number;
+  trackId: number;
+  sourceBar: number;
+  expectedNumBars: number;
+  expectedStepsPerBar: number;
+  expectedSource: MelodyNote[];
+  sourceRows: Note[];
+}
+
+function melodyApplyError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (/unknown reducer|reducer not found|no such reducer|reducer does not exist|not registered/i.test(message)) {
+    return "This workspace needs the JamSpace 1.1 database update before you can apply suggestions.";
+  }
+  if (/websocket|disconnect|network/i.test(message)) {
+    return "Connection lost. Check the grid before trying again; the save may have completed.";
+  }
+  return message || "Could not add the melody. Please try again.";
+}
 
 interface Props {
   session:      Session;
@@ -50,6 +74,19 @@ export default function SessionView({
   const [showAddTrack,    setShowAddTrack]    = useState(false);
   const [showShare,       setShowShare]       = useState(false);
   const [showExport,      setShowExport]      = useState(false);
+  const [showMelody,      setShowMelody]      = useState(false);
+  const showMelodyRef = useRef(false);
+  const [melodyTrackId,   setMelodyTrackId]   = useState<number | null>(null);
+  const [melodyCandidates, setMelodyCandidates] = useState<MelodyContinuation[]>([]);
+  const [melodyError,     setMelodyError]     = useState("");
+  const [melodyGenerating, setMelodyGenerating] = useState(false);
+  const [melodyApplying, setMelodyApplying] = useState(false);
+  const [playingCandidateId, setPlayingCandidateId] = useState<string | null>(null);
+  const melodySnapshotRef = useRef<MelodyGenerationSnapshot | null>(null);
+  const melodyVariationRef = useRef(0);
+  const melodyPreviewStopRef = useRef<(() => void) | null>(null);
+  const melodyPreviewTimerRef = useRef<number | null>(null);
+  const melodyPreviewTokenRef = useRef(0);
   const closeShare = useCallback(() => setShowShare(false), []);
   const closeExport = useCallback(() => setShowExport(false), []);
 
@@ -107,7 +144,7 @@ export default function SessionView({
           if (blockIdx >= 0) {
             const sorted = [...arrangementRef.current].sort((a, b) => a.position - b.position || a.blockId - b.blockId);
             const block  = sorted[blockIdx];
-            if (block && block.patternId !== activePatternIdRef.current) {
+            if (block && block.patternId !== activePatternIdRef.current && !showMelodyRef.current) {
               setActivePatternId(block.patternId);
             }
           }
@@ -293,7 +330,7 @@ export default function SessionView({
     [notes, activePatternId]
   );
 
-  // In personal mode, apply local volume overrides to tracks for display + scheduler
+  // In personal mode, apply local volume overrides to tracks for display + scheduler.
   const effectiveTracks = useMemo(() => {
     if (playbackMode === "sync" || localVolumes.size === 0) return tracks;
     return tracks.map(t => {
@@ -301,6 +338,157 @@ export default function SessionView({
       return lv !== undefined ? { ...t, volume: lv } : t;
     });
   }, [tracks, localVolumes, playbackMode]);
+
+  const melodicTracks = useMemo(() => tracks.filter(track => track.instrument !== "drums"), [tracks]);
+  const selectedMelodyTrack = useMemo(() => {
+    const selected = melodicTracks.find(track => track.trackId === melodyTrackId);
+    if (selected) return selected;
+    const active = melodicTracks.find(track => track.trackId === activeTrackId);
+    if (active) return active;
+    const withNotes = melodicTracks.find(track => activeNotes.some(note => note.trackId === track.trackId));
+    return withNotes ?? melodicTracks[0] ?? null;
+  }, [melodicTracks, melodyTrackId, activeTrackId, activeNotes]);
+  const melodyTrackNotes = useMemo(
+    () => activeNotes.filter(note => note.trackId === selectedMelodyTrack?.trackId && note.step < (activePattern?.numBars ?? 0) * stepsPerBar),
+    [activeNotes, selectedMelodyTrack, activePattern, stepsPerBar],
+  );
+  const melodySourceBar = melodyTrackNotes.length
+    ? Math.max(...melodyTrackNotes.map(note => Math.floor(note.step / stepsPerBar)))
+    : 0;
+  const melodySourceNotes = melodyTrackNotes.filter(note => Math.floor(note.step / stepsPerBar) === melodySourceBar);
+  const melodyTargetStart = (melodySourceBar + 1) * stepsPerBar;
+  const melodyTargetEnd = melodyTargetStart + 4 * stepsPerBar;
+  const melodyDisabledReason = !activePattern || !selectedMelodyTrack
+    ? "Choose a pattern and a melodic track first."
+    : melodySourceNotes.length > 64
+      ? "This bar has too many notes to continue. Simplify it to 64 notes or fewer."
+    : melodySourceBar + 5 > 32
+      ? "Four more bars would exceed this pattern's 32-bar limit."
+      : activeNotes.some(note => note.trackId === selectedMelodyTrack.trackId && note.step < melodyTargetEnd && note.step + note.duration > melodyTargetStart)
+        ? "The next four bars already contain notes. Edit those notes before continuing."
+        : "";
+
+  const stopMelodyPreview = useCallback(() => {
+    melodyPreviewTokenRef.current += 1;
+    melodyPreviewStopRef.current?.();
+    melodyPreviewStopRef.current = null;
+    if (melodyPreviewTimerRef.current !== null) window.clearTimeout(melodyPreviewTimerRef.current);
+    melodyPreviewTimerRef.current = null;
+    setPlayingCandidateId(null);
+  }, []);
+
+  const closeMelody = useCallback(() => {
+    showMelodyRef.current = false;
+    stopMelodyPreview();
+    setShowMelody(false);
+    setMelodyError("");
+    setMelodyCandidates([]);
+    melodySnapshotRef.current = null;
+  }, [stopMelodyPreview]);
+
+  const generateMelody = useCallback(() => {
+    stopMelodyPreview();
+    setMelodyError("");
+    setMelodyGenerating(true);
+    try {
+      if (!activePattern || !selectedMelodyTrack || melodyDisabledReason) {
+        throw new Error(melodyDisabledReason || "Choose a melodic track first.");
+      }
+      const source = melodySourceNotes.map(({ step, pitch, velocity, duration }) => ({ step, pitch, velocity, duration }));
+      const context = activeNotes
+        .filter(note => note.trackId !== selectedMelodyTrack.trackId && tracks.some(track => track.trackId === note.trackId && track.instrument !== "drums"))
+        .map(({ step, pitch, velocity, duration }) => ({ step, pitch, velocity, duration }));
+      const candidates = generateMelodyContinuations({
+        sourceNotes: source,
+        contextNotes: context,
+        sourceBar: melodySourceBar,
+        stepsPerBar,
+        tempoBpm: session.tempoBpm,
+        allowedPitches: melodyGridPitches(selectedMelodyTrack.instrument),
+        variationSeed: melodyVariationRef.current++,
+      });
+      melodySnapshotRef.current = {
+        patternId: activePattern.patternId,
+        trackId: selectedMelodyTrack.trackId,
+        sourceBar: melodySourceBar,
+        expectedNumBars: activePattern.numBars,
+        expectedStepsPerBar: stepsPerBar,
+        expectedSource: source,
+        sourceRows: [...melodySourceNotes],
+      };
+      setMelodyCandidates(candidates);
+    } catch (error) {
+      setMelodyCandidates([]);
+      setMelodyError(error instanceof Error ? error.message : "Could not create melody suggestions.");
+    } finally {
+      setMelodyGenerating(false);
+    }
+  }, [activeNotes, activePattern, melodyDisabledReason, melodySourceBar, melodySourceNotes, selectedMelodyTrack, session.tempoBpm, stepsPerBar, stopMelodyPreview, tracks]);
+
+  const openMelody = useCallback(() => {
+    showMelodyRef.current = true;
+    setShowMelody(true);
+    generateMelody();
+  }, [generateMelody]);
+
+  const previewMelody = useCallback(async (candidate: MelodyContinuation) => {
+    const snapshot = melodySnapshotRef.current;
+    if (!snapshot || !activePattern || snapshot.patternId !== activePattern.patternId) return;
+    stopMelodyPreview();
+    setMelodyError("");
+    const token = melodyPreviewTokenRef.current;
+    setPlayingCandidateId(candidate.id);
+    try {
+      const fromStep = snapshot.sourceBar * snapshot.expectedStepsPerBar;
+      const toStep = fromStep + 5 * snapshot.expectedStepsPerBar;
+      const sourceNotes = snapshot.sourceRows;
+      const contextNotes = activeNotes.filter(note => note.trackId !== snapshot.trackId);
+      const previewNotes = notesForMelodyPreview(sourceNotes, contextNotes, effectiveTracks, snapshot.trackId, fromStep, toStep, candidate.notes);
+      const stop = await playMelodyPreview(previewNotes, fromStep, toStep, session.tempoBpm);
+      if (token !== melodyPreviewTokenRef.current) { stop(); return; }
+      melodyPreviewStopRef.current = stop;
+      melodyPreviewTimerRef.current = window.setTimeout(stopMelodyPreview, (toStep - fromStep) * 60 / session.tempoBpm / 4 * 1000 + 300);
+    } catch {
+      if (token === melodyPreviewTokenRef.current) {
+        setPlayingCandidateId(null);
+        setMelodyError("Audio preview could not start. You can still view the notes.");
+      }
+    }
+  }, [activeNotes, activePattern, effectiveTracks, session.tempoBpm, stopMelodyPreview]);
+
+  const applyMelody = useCallback(async (candidate: MelodyContinuation) => {
+    const snapshot = melodySnapshotRef.current;
+    if (!snapshot || !melodyCandidates.some(item => item === candidate)) return;
+    if (snapshot.patternId !== activePatternId || snapshot.trackId !== selectedMelodyTrack?.trackId) {
+      setMelodyError("The selected pattern or track changed. Create suggestions again.");
+      return;
+    }
+    stopMelodyPreview();
+    setMelodyError("");
+    setMelodyApplying(true);
+    try {
+      await conn.reducers.applyMelodyContinuation({
+        patternId: snapshot.patternId,
+        trackId: snapshot.trackId,
+        sourceBar: snapshot.sourceBar,
+        expectedNumBars: snapshot.expectedNumBars,
+        expectedStepsPerBar: snapshot.expectedStepsPerBar,
+        expectedSource: snapshot.expectedSource,
+        notes: candidate.notes,
+      });
+      closeMelody();
+    } catch (error) {
+      setMelodyError(melodyApplyError(error));
+    } finally {
+      setMelodyApplying(false);
+    }
+  }, [activePatternId, closeMelody, conn, melodyCandidates, selectedMelodyTrack, stopMelodyPreview]);
+
+  useEffect(() => () => {
+    melodyPreviewTokenRef.current += 1;
+    melodyPreviewStopRef.current?.();
+    if (melodyPreviewTimerRef.current !== null) window.clearTimeout(melodyPreviewTimerRef.current);
+  }, []);
 
   // Keep scheduler in sync with effective tracks
   useEffect(() => {
@@ -341,11 +529,50 @@ export default function SessionView({
         myIdentity={myIdentity}
       />
 
+      <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 12px", background: "#12121c", borderBottom: "1px solid #292941", flexShrink: 0, minHeight: 42 }}>
+        <span style={{ color: "#a78bfa", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>✦ Melody ideas</span>
+        <select
+          aria-label="Track to continue"
+          value={selectedMelodyTrack?.trackId ?? ""}
+          onChange={event => { setMelodyTrackId(Number(event.target.value)); closeMelody(); }}
+          disabled={melodicTracks.length === 0}
+          style={{ background: "#1c1c2a", border: "1px solid #383850", borderRadius: 5, color: "#ddddef", padding: "4px 7px", fontSize: 11, maxWidth: 130 }}
+        >
+          {melodicTracks.length === 0 && <option value="">No melodic track</option>}
+          {melodicTracks.map(track => <option key={track.trackId} value={track.trackId}>{track.instrument} track</option>)}
+        </select>
+        <button type="button" onClick={openMelody} disabled={!activePattern || !selectedMelodyTrack}
+          style={{ background: "#7455d7", border: 0, borderRadius: 6, color: "white", padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", opacity: !activePattern || !selectedMelodyTrack ? 0.45 : 1 }}>
+          Continue my melody
+        </button>
+        <span style={{ fontSize: 11, color: "#72728e", whiteSpace: "nowrap" }}>Uses your latest bar in this pattern · adds four bars</span>
+      </div>
+
       {showShare && (
         <ShareDialog sessionId={session.sessionId} sessionName={session.name} onClose={closeShare} />
       )}
       {showExport && (
         <ExportDialog session={session} tracks={tracks} notes={notes} patterns={patterns} arrangement={arrangement} onClose={closeExport} />
+      )}
+      {showMelody && (
+        <ContinueMelodyDialog
+          trackName={`${selectedMelodyTrack?.instrument ?? "Melody"} track`}
+          sourceBar={melodySnapshotRef.current?.sourceBar ?? melodySourceBar}
+          stepsPerBar={melodySnapshotRef.current?.expectedStepsPerBar ?? stepsPerBar}
+          sourceNoteCount={melodySnapshotRef.current?.expectedSource.length ?? melodySourceNotes.length}
+          patternUseCount={arrangement.filter(block => block.patternId === activePattern?.patternId).length}
+          candidates={melodyCandidates}
+          isGenerating={melodyGenerating}
+          isApplying={melodyApplying}
+          playingCandidateId={playingCandidateId}
+          error={melodyError}
+          disabledReason={melodyDisabledReason}
+          onGenerate={generateMelody}
+          onPreview={previewMelody}
+          onStopPreview={stopMelodyPreview}
+          onApply={applyMelody}
+          onClose={closeMelody}
+        />
       )}
 
 

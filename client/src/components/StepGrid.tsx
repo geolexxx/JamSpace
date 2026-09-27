@@ -20,6 +20,10 @@ const INSTRUMENT_PITCHES: Record<string, number[]> = {
   lead:  diatonicPitches(60),
 };
 
+export function melodyGridPitches(instrument: string): readonly number[] {
+  return INSTRUMENT_PITCHES[instrument] ?? INSTRUMENT_PITCHES.synth;
+}
+
 const BLACK_KEYS = new Set([61,63,66,68,70, 49,51,54,56,58, 73,75,78,80,82]);
 
 function noteLeft(step: number, stepsPerBar: number): number {
