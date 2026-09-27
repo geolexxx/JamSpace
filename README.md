@@ -173,12 +173,10 @@ Use Node 20 or newer. Start `ai-service` in a separate terminal with `OPENAI_API
 
 The 1.1 beta uses a fresh MainCloud database, `jamspace-v11-geolexxx`, under the `@geolexxx` account. It does not contain projects from the earlier `jamspace` database. The database dashboard is [spacetimedb.com/jamspace-v11-geolexxx](https://spacetimedb.com/jamspace-v11-geolexxx).
 
-Create a **new** Vercel project from this GitHub repository, with **Root Directory** set to `client` and **Production Branch** set to `version1.1`. The `client/vercel.json` file supplies the Vite SPA route and the `/api/melody/continue` function. Set these environment variables for Production and Preview before deploying:
+Create a **new** Vercel project from this GitHub repository, with **Root Directory** set to `client` and **Production Branch** set to `version1.1`. The `client/vercel.json` file supplies the Vite SPA route and the `/api/melody/continue` function. `client/.env.production` contains only the public database address and name. Set these server-side environment variables for Production and Preview before enabling AI:
 
 | Variable | Value |
 | --- | --- |
-| `VITE_STDB_URI` | `wss://maincloud.spacetimedb.com` |
-| `VITE_MODULE_NAME` | `jamspace-v11-geolexxx` |
 | `OPENAI_API_KEY` | Secret key from the limited JamSpace Testing OpenAI project; never prefix this variable with `VITE_` |
 | `JAMSPACE_AI_ACCESS_CODE` | A private testing code, shared only with invited AI testers |
 | `OPENAI_MODEL` | Optional; defaults to `gpt-6-luna` |
