@@ -169,6 +169,24 @@ A typical iteration when changing backend logic: edit `lib.rs` → `spacetime pu
 
 Use Node 20 or newer. Start `ai-service` in a separate terminal with `OPENAI_API_KEY` set in that terminal's environment, then run the client dev server. In zsh, `read -s OPENAI_API_KEY` lets you paste the key without displaying it; press Return, then run `export OPENAI_API_KEY` and `npm start`. Restart the service after changing its code. The local AI service listens on `127.0.0.1:8787`; Vite forwards `/api` requests to it. `OPENAI_MODEL` optionally changes the model (default: `gpt-6-luna`). Keep the API key out of `client/` and out of Git. If the service or key is unavailable, **Continue my melody** shows an error; it does not silently generate rule-based notes. The local service is intended for development and has no project identity or per-user quota, so it must not be exposed publicly as-is.
 
+### Version 1.1 Vercel release
+
+The 1.1 beta uses a fresh MainCloud database, `jamspace-v11-geolexxx`, under the `@geolexxx` account. It does not contain projects from the earlier `jamspace` database. The database dashboard is [spacetimedb.com/jamspace-v11-geolexxx](https://spacetimedb.com/jamspace-v11-geolexxx).
+
+Create a **new** Vercel project from this GitHub repository, with **Root Directory** set to `client` and **Production Branch** set to `version1.1`. The `client/vercel.json` file supplies the Vite SPA route and the `/api/melody/continue` function. Set these environment variables for Production and Preview before deploying:
+
+| Variable | Value |
+| --- | --- |
+| `VITE_STDB_URI` | `wss://maincloud.spacetimedb.com` |
+| `VITE_MODULE_NAME` | `jamspace-v11-geolexxx` |
+| `OPENAI_API_KEY` | Secret key from the limited JamSpace Testing OpenAI project; never prefix this variable with `VITE_` |
+| `JAMSPACE_AI_ACCESS_CODE` | A private testing code, shared only with invited AI testers |
+| `OPENAI_MODEL` | Optional; defaults to `gpt-6-luna` |
+
+The production client asks for the AI testing code on first use and keeps it only for the browser session. The Vercel function refuses AI requests unless both server secrets are configured. Keep the OpenAI project's hard spend limit enabled, and add a Vercel Firewall rate limit for `/api/melody/continue` before sharing the site broadly. Changing Vercel environment variables requires a new deployment.
+
+Verify the deployed home page, creating and joining a project, live edits in two browsers, WAV export, and all four instrument AI suggestions. `GET /api/melody/health` should return `{ "ready": true }` when the AI secrets are configured. A new Vercel project gets a new `*.vercel.app` URL; it does not replace the existing site.
+
 ---
 
 ## Features
@@ -183,4 +201,4 @@ Use Node 20 or newer. Start `ai-service` in a separate terminal with `OPENAI_API
 
 ---
 
-*JamSpace is a collaborative music prototype. Shared edits use SpacetimeDB; model-backed melody suggestions require a separate local service and an OpenAI API key.*
+*JamSpace is a collaborative music prototype. Shared edits use SpacetimeDB; model-backed melody suggestions require an OpenAI API key held by the server.*

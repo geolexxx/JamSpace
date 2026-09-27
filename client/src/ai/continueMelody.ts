@@ -155,11 +155,21 @@ export async function generateMelodyContinuations(
   options: { signal?: AbortSignal } = {},
 ): Promise<MelodyContinuation[]> {
   const request = prepareInput(input);
+  const production = import.meta.env?.PROD === true;
+  let accessCode = "";
+  if (production) {
+    accessCode = sessionStorage.getItem("jamspace_ai_access_code") ?? "";
+    if (!accessCode) {
+      accessCode = window.prompt("Enter your JamSpace AI testing code")?.trim() ?? "";
+      if (!accessCode) throw new Error("Enter a testing code to use AI suggestions.");
+      sessionStorage.setItem("jamspace_ai_access_code", accessCode);
+    }
+  }
   let response: Response;
   try {
     response = await fetch("/api/melody/continue", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(production ? { "X-JamSpace-AI-Code": accessCode } : {}) },
       body: JSON.stringify(request),
       signal: options.signal,
     });
@@ -175,6 +185,9 @@ export async function generateMelodyContinuations(
   }
   if (!response.ok) {
     const rawError = isRecord(body) ? body.error : null;
+    if (production && isRecord(rawError) && rawError.code === "AI_ACCESS_DENIED") {
+      sessionStorage.removeItem("jamspace_ai_access_code");
+    }
     const message = isRecord(rawError) && typeof rawError.message === "string" && rawError.message.length <= 240
       ? rawError.message : "The melody agent could not create ideas. Try again.";
     throw new Error(message);
