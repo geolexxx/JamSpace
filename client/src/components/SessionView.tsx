@@ -34,11 +34,25 @@ const INSTRUMENT_OPTIONS = [
 interface MelodyGenerationSnapshot {
   patternId: number;
   trackId: number;
+  trackInstrument: string;
   sourceBar: number;
   expectedNumBars: number;
   expectedStepsPerBar: number;
   expectedSource: MelodyNote[];
+  contextSignature: string;
   sourceRows: Note[];
+}
+
+function melodyContextSignature(notes: Note[], tracks: Track[], selectedTrackId: number, sourceBar: number, stepsPerBar: number): string {
+  const start = Math.max(0, (sourceBar - 4) * stepsPerBar);
+  const sourceStart = sourceBar * stepsPerBar;
+  const sourceEnd = sourceStart + stepsPerBar;
+  const melodicTrackIds = new Set(tracks.filter(track => track.instrument !== "drums").map(track => track.trackId));
+  return JSON.stringify(notes
+    .filter(note => note.step >= start && note.step < sourceEnd && melodicTrackIds.has(note.trackId) &&
+      (note.trackId !== selectedTrackId || note.step < sourceStart))
+    .map(({ trackId, step, pitch, velocity, duration }) => ({ trackId, step, pitch, velocity, duration }))
+    .sort((a, b) => a.trackId - b.trackId || a.step - b.step || a.pitch - b.pitch || a.duration - b.duration || a.velocity - b.velocity));
 }
 
 function melodyApplyError(error: unknown): string {
@@ -84,6 +98,8 @@ export default function SessionView({
   const [playingCandidateId, setPlayingCandidateId] = useState<string | null>(null);
   const melodySnapshotRef = useRef<MelodyGenerationSnapshot | null>(null);
   const melodyVariationRef = useRef(0);
+  const melodyGenerationAbortRef = useRef<AbortController | null>(null);
+  const melodyGenerationTokenRef = useRef(0);
   const melodyPreviewStopRef = useRef<(() => void) | null>(null);
   const melodyPreviewTimerRef = useRef<number | null>(null);
   const melodyPreviewTokenRef = useRef(0);
@@ -379,57 +395,83 @@ export default function SessionView({
 
   const closeMelody = useCallback(() => {
     showMelodyRef.current = false;
+    melodyGenerationTokenRef.current += 1;
+    melodyGenerationAbortRef.current?.abort();
+    melodyGenerationAbortRef.current = null;
     stopMelodyPreview();
     setShowMelody(false);
     setMelodyError("");
+    setMelodyGenerating(false);
     setMelodyCandidates([]);
     melodySnapshotRef.current = null;
   }, [stopMelodyPreview]);
 
-  const generateMelody = useCallback(() => {
+  const generateMelody = useCallback(async (instruction = "") => {
+    melodyGenerationAbortRef.current?.abort();
+    const controller = new AbortController();
+    melodyGenerationAbortRef.current = controller;
+    const requestToken = ++melodyGenerationTokenRef.current;
     stopMelodyPreview();
     setMelodyError("");
+    setMelodyCandidates([]);
+    melodySnapshotRef.current = null;
     setMelodyGenerating(true);
     try {
       if (!activePattern || !selectedMelodyTrack || melodyDisabledReason) {
         throw new Error(melodyDisabledReason || "Choose a melodic track first.");
       }
       const source = melodySourceNotes.map(({ step, pitch, velocity, duration }) => ({ step, pitch, velocity, duration }));
-      const context = activeNotes
-        .filter(note => note.trackId !== selectedMelodyTrack.trackId && tracks.some(track => track.trackId === note.trackId && track.instrument !== "drums"))
+      const earlierStart = Math.max(0, (melodySourceBar - 4) * stepsPerBar);
+      const previous = melodyTrackNotes
+        .filter(note => note.step >= earlierStart && note.step < melodySourceBar * stepsPerBar)
+        .slice(-64)
         .map(({ step, pitch, velocity, duration }) => ({ step, pitch, velocity, duration }));
-      const candidates = generateMelodyContinuations({
+      const context = activeNotes
+        .filter(note => note.step >= earlierStart && note.step < (melodySourceBar + 1) * stepsPerBar &&
+          note.trackId !== selectedMelodyTrack.trackId && tracks.some(track => track.trackId === note.trackId && track.instrument !== "drums"))
+        .slice(-128)
+        .map(({ step, pitch, velocity, duration }) => ({ step, pitch, velocity, duration }));
+      const snapshot: MelodyGenerationSnapshot = {
+        patternId: activePattern.patternId,
+        trackId: selectedMelodyTrack.trackId,
+        trackInstrument: selectedMelodyTrack.instrument,
+        sourceBar: melodySourceBar,
+        expectedNumBars: activePattern.numBars,
+        expectedStepsPerBar: stepsPerBar,
+        expectedSource: source,
+        contextSignature: melodyContextSignature(activeNotes, tracks, selectedMelodyTrack.trackId, melodySourceBar, stepsPerBar),
+        sourceRows: [...melodySourceNotes],
+      };
+      const candidates = await generateMelodyContinuations({
         sourceNotes: source,
+        previousNotes: previous,
         contextNotes: context,
         sourceBar: melodySourceBar,
         stepsPerBar,
         tempoBpm: session.tempoBpm,
         allowedPitches: melodyGridPitches(selectedMelodyTrack.instrument),
         variationSeed: melodyVariationRef.current++,
-      });
-      melodySnapshotRef.current = {
-        patternId: activePattern.patternId,
-        trackId: selectedMelodyTrack.trackId,
-        sourceBar: melodySourceBar,
-        expectedNumBars: activePattern.numBars,
-        expectedStepsPerBar: stepsPerBar,
-        expectedSource: source,
-        sourceRows: [...melodySourceNotes],
-      };
+        instruction,
+      }, { signal: controller.signal });
+      if (!showMelodyRef.current || requestToken !== melodyGenerationTokenRef.current) return;
+      melodySnapshotRef.current = snapshot;
       setMelodyCandidates(candidates);
     } catch (error) {
+      if (!showMelodyRef.current || requestToken !== melodyGenerationTokenRef.current || controller.signal.aborted) return;
       setMelodyCandidates([]);
       setMelodyError(error instanceof Error ? error.message : "Could not create melody suggestions.");
     } finally {
-      setMelodyGenerating(false);
+      if (requestToken === melodyGenerationTokenRef.current) {
+        melodyGenerationAbortRef.current = null;
+        setMelodyGenerating(false);
+      }
     }
-  }, [activeNotes, activePattern, melodyDisabledReason, melodySourceBar, melodySourceNotes, selectedMelodyTrack, session.tempoBpm, stepsPerBar, stopMelodyPreview, tracks]);
+  }, [activeNotes, activePattern, melodyDisabledReason, melodySourceBar, melodySourceNotes, melodyTrackNotes, selectedMelodyTrack, session.tempoBpm, stepsPerBar, stopMelodyPreview, tracks]);
 
   const openMelody = useCallback(() => {
     showMelodyRef.current = true;
     setShowMelody(true);
-    generateMelody();
-  }, [generateMelody]);
+  }, []);
 
   const previewMelody = useCallback(async (candidate: MelodyContinuation) => {
     const snapshot = melodySnapshotRef.current;
@@ -459,8 +501,13 @@ export default function SessionView({
   const applyMelody = useCallback(async (candidate: MelodyContinuation) => {
     const snapshot = melodySnapshotRef.current;
     if (!snapshot || !melodyCandidates.some(item => item === candidate)) return;
-    if (snapshot.patternId !== activePatternId || snapshot.trackId !== selectedMelodyTrack?.trackId) {
+    if (snapshot.patternId !== activePatternId || snapshot.trackId !== selectedMelodyTrack?.trackId ||
+        snapshot.trackInstrument !== selectedMelodyTrack.instrument) {
       setMelodyError("The selected pattern or track changed. Create suggestions again.");
+      return;
+    }
+    if (snapshot.contextSignature !== melodyContextSignature(activeNotes, tracks, snapshot.trackId, snapshot.sourceBar, snapshot.expectedStepsPerBar)) {
+      setMelodyError("Nearby notes changed since these ideas were created. Create suggestions again.");
       return;
     }
     stopMelodyPreview();
@@ -482,9 +529,10 @@ export default function SessionView({
     } finally {
       setMelodyApplying(false);
     }
-  }, [activePatternId, closeMelody, conn, melodyCandidates, selectedMelodyTrack, stopMelodyPreview]);
+  }, [activeNotes, activePatternId, closeMelody, conn, melodyCandidates, selectedMelodyTrack, stopMelodyPreview, tracks]);
 
   useEffect(() => () => {
+    melodyGenerationAbortRef.current?.abort();
     melodyPreviewTokenRef.current += 1;
     melodyPreviewStopRef.current?.();
     if (melodyPreviewTimerRef.current !== null) window.clearTimeout(melodyPreviewTimerRef.current);
@@ -545,7 +593,7 @@ export default function SessionView({
           style={{ background: "#7455d7", border: 0, borderRadius: 6, color: "white", padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", opacity: !activePattern || !selectedMelodyTrack ? 0.45 : 1 }}>
           Continue my melody
         </button>
-        <span style={{ fontSize: 11, color: "#72728e", whiteSpace: "nowrap" }}>Uses your latest bar in this pattern · adds four bars</span>
+        <span style={{ fontSize: 11, color: "#72728e", whiteSpace: "nowrap" }}>AI builds on your latest bar · adds four editable bars</span>
       </div>
 
       {showShare && (

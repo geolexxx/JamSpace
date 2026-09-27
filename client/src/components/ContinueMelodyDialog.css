@@ -46,7 +46,13 @@
 .melody-source-text span { font-size: 11px; color: #b3a4c4; }
 .melody-source-arrow { margin-left: auto; color: #b089d6; font-size: 18px; }
 .melody-source-target { min-width: 98px; }
-.melody-original-note { color: #b6aac4; font-size: 12px; line-height: 1.55; margin: 13px 2px 22px; }
+.melody-original-note { color: #b6aac4; font-size: 12px; line-height: 1.55; margin: 13px 2px 18px; }
+.melody-direction-label { display: flex; align-items: baseline; gap: 7px; color: #e5d5f2; font-size: 12px; font-weight: 700; margin: 0 2px 7px; }
+.melody-direction-label span { color: #9687a7; font-size: 11px; font-weight: 400; }
+.melody-direction-input { box-sizing: border-box; display: block; width: 100%; min-height: 67px; resize: vertical; border: 1px solid #5c486e; border-radius: 8px; background: #21192e; color: #f5edff; padding: 10px 12px; font: inherit; font-size: 12px; line-height: 1.45; }
+.melody-direction-input::placeholder { color: #8e7fa0; }
+.melody-direction-input:disabled { opacity: .5; }
+.melody-direction-hint { color: #9283a1; font-size: 11px; line-height: 1.45; margin: 6px 2px 18px; }
 .melody-dialog-warning, .melody-dialog-error { font-size: 12px; line-height: 1.5; padding: 10px 12px; border-radius: 8px; }
 .melody-dialog-warning { color: #fbd088; background: #43321e; }
 .melody-dialog-error { color: #ffb3b3; background: #432329; overflow-wrap: anywhere; }
@@ -82,6 +88,7 @@
 .melody-secondary-button { border: 1px solid #5b4970; color: #e0d3ef; background: #291e37; }
 .melody-primary-button { border: 1px solid #884dda; color: white; background: #793bc6; }
 .melody-dialog button:focus-visible { outline: 2px solid #e3c5ff; outline-offset: 2px; }
+.melody-dialog textarea:focus-visible { outline: 2px solid #e3c5ff; outline-offset: 2px; }
 
 @media (max-width: 560px) {
   .melody-dialog-backdrop { padding: 10px; align-items: flex-end; }

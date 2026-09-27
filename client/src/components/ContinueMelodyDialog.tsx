@@ -14,7 +14,7 @@ interface Props {
   playingCandidateId: string | null;
   error?: string;
   disabledReason?: string;
-  onGenerate: () => void;
+  onGenerate: (instruction: string) => void;
   onPreview: (candidate: MelodyContinuation) => void;
   onStopPreview: () => void;
   onApply: (candidate: MelodyContinuation) => void;
@@ -67,10 +67,9 @@ export default function ContinueMelodyDialog({
   onGenerate, onPreview, onStopPreview, onApply, onClose,
 }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [instruction, setInstruction] = useState("");
   const dialogRef = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const busyRef = useRef(isGenerating || isApplying);
-  busyRef.current = isGenerating || isApplying;
 
   useEffect(() => {
     if (!candidates.some(candidate => candidate.id === selectedId)) {
@@ -84,10 +83,10 @@ export default function ContinueMelodyDialog({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        if (!busyRef.current) onClose();
+        if (!isApplying) onClose();
       }
       if (event.key !== "Tab") return;
-      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex="0"]');
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), textarea:not([disabled]), [tabindex="0"]');
       if (!focusable?.length) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
@@ -102,7 +101,7 @@ export default function ContinueMelodyDialog({
       document.removeEventListener("keydown", onKeyDown);
       previousFocus?.focus();
     };
-  }, [onClose]);
+  }, [onClose, isApplying]);
 
   const selected = candidates.find(candidate => candidate.id === selectedId) ?? null;
   const busy = isGenerating || isApplying;
@@ -111,16 +110,16 @@ export default function ContinueMelodyDialog({
 
   return (
     <div className="melody-dialog-backdrop" onMouseDown={event => {
-      if (event.target === event.currentTarget && !busy) onClose();
+      if (event.target === event.currentTarget && !isApplying) onClose();
     }}>
       <div ref={dialogRef} className="melody-dialog" role="dialog" aria-modal="true" aria-labelledby="melody-dialog-title" aria-describedby="melody-dialog-description">
         <div className="melody-dialog-header">
           <div>
-            <div className="melody-dialog-eyebrow"><span aria-hidden="true">✦</span> Melody ideas</div>
+            <div className="melody-dialog-eyebrow"><span aria-hidden="true">✦</span> AI melody partner</div>
             <h2 ref={headingRef} tabIndex={-1} id="melody-dialog-title">Continue my melody</h2>
             <p id="melody-dialog-description">Hear how the bar you wrote could grow into a longer phrase.</p>
           </div>
-          <button type="button" className="melody-dialog-close" aria-label="Close melody suggestions" onClick={onClose} disabled={busy}>×</button>
+          <button type="button" className="melody-dialog-close" aria-label="Close melody suggestions" onClick={onClose} disabled={isApplying}>×</button>
         </div>
 
         <div className="melody-source-summary">
@@ -137,6 +136,12 @@ export default function ContinueMelodyDialog({
         </div>
 
         <p className="melody-original-note">Your original bar stays as it is. Suggestions stay private until you apply one; you can keep editing the added notes in the grid.</p>
+        <label className="melody-direction-label" htmlFor="melody-direction">Tell the AI where to take it <span>optional</span></label>
+        <textarea id="melody-direction" className="melody-direction-input" value={instruction}
+          onChange={event => setInstruction(event.target.value)} maxLength={300} rows={2}
+          placeholder="e.g. Make it more dreamy, then end with a gentle rise"
+          disabled={isApplying} />
+        <p className="melody-direction-hint">When you create suggestions, this bar, up to four earlier bars, nearby melodic tracks, and your direction are sent to the AI service.</p>
         {patternUseCount > 1 && <p className="melody-dialog-warning" role="status">This pattern appears {patternUseCount} times in the song. Applying a continuation will extend every occurrence.</p>}
 
         {disabledReason && <p className="melody-dialog-warning" role="status">{disabledReason}</p>}
@@ -151,7 +156,7 @@ export default function ContinueMelodyDialog({
         {candidates.length === 0 ? (
           <div className="melody-empty-state">
             <span aria-hidden="true">♬</span>
-            <p>Start with your idea. We’ll sketch the next four bars so you can hear the phrase take shape.</p>
+            <p>{isGenerating ? "The AI is developing three four-bar ideas from your melody…" : "Start with your idea. The AI will sketch the next four bars so you can hear the phrase take shape."}</p>
           </div>
         ) : (
           <div className="melody-candidate-list" role="group" aria-label="Melody variations">
@@ -184,7 +189,7 @@ export default function ContinueMelodyDialog({
         <div className="melody-dialog-footer">
           <button type="button" className="melody-secondary-button" onClick={() => {
             if (playingCandidateId) onStopPreview();
-            onGenerate();
+            onGenerate(instruction);
           }} disabled={cannotGenerate}>{isGenerating ? "Creating…" : candidates.length ? "Try new ideas" : "Create suggestions"}</button>
           <button type="button" className="melody-primary-button" onClick={() => selected && onApply(selected)} disabled={!selected || busy || !!disabledReason}>
             {isApplying ? "Adding notes…" : "Apply selected"}

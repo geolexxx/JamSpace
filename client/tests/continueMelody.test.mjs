@@ -1,79 +1,103 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { generateMelodyContinuations } from '../src/ai/continueMelody.ts';
+import { generateMelodyContinuations, validateMelodyResponse } from '../src/ai/continueMelody.ts';
 
 const allowedPitches = [72, 71, 69, 67, 65, 64, 62, 60];
+const input = {
+  sourceNotes: [
+    { step: 16, pitch: 64, velocity: 98, duration: 3 },
+    { step: 20, pitch: 67, velocity: 90, duration: 2 },
+  ],
+  previousNotes: [{ step: 0, pitch: 62, velocity: 88, duration: 4 }],
+  contextNotes: [{ step: 16, pitch: 60, velocity: 78, duration: 4 }],
+  sourceBar: 1,
+  stepsPerBar: 16,
+  tempoBpm: 110,
+  allowedPitches,
+  variationSeed: 2,
+  instruction: '  Make it dreamy  ',
+};
+const candidates = [
+  { id: 'familiar', label: 'Stay close', description: 'A gentle motif extension', notes: [{ step: 32, pitch: 64, velocity: 90, duration: 4 }] },
+  { id: 'lift', label: 'Lift', description: 'A rising idea', notes: [{ step: 47, pitch: 67, velocity: 95, duration: 5 }, { step: 47, pitch: 72, velocity: 80, duration: 5 }] },
+  { id: 'answer', label: 'Answer', description: 'A response and landing', notes: [{ step: 90, pitch: 60, velocity: 86, duration: 6 }] },
+];
 
-function phrase(sourceBar = 0, stepsPerBar = 16) {
-  const start = sourceBar * stepsPerBar;
-  return {
-    sourceNotes: [
-      { step: start, pitch: 64, velocity: 98, duration: 3 },
-      { step: start + 4, pitch: 67, velocity: 90, duration: 2 },
-      { step: start + 8, pitch: 69, velocity: 94, duration: 4 },
-      { step: start + 12, pitch: 67, velocity: 88, duration: 3 },
-    ].filter(note => note.step < start + stepsPerBar),
-    sourceBar, stepsPerBar, tempoBpm: 110, allowedPitches,
+test('agent request includes the source, prior phrase, harmonic context, and user direction', async () => {
+  const originalFetch = globalThis.fetch;
+  const before = structuredClone(input);
+  let request;
+  globalThis.fetch = async (url, options) => {
+    request = { url, options };
+    return new Response(JSON.stringify({ candidates }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
-}
-
-test('returns three distinct, editable four-bar proposals without changing the source', () => {
-  const input = phrase();
-  const before = structuredClone(input.sourceNotes);
-  const proposals = generateMelodyContinuations(input);
-  assert.equal(proposals.length, 3);
-  assert.deepEqual(input.sourceNotes, before);
-  assert.equal(new Set(proposals.map(p => JSON.stringify(p.notes))).size, 3);
-  for (const proposal of proposals) {
-    assert.ok(proposal.notes.length > 0);
-    const seenSteps = new Set();
-    for (const note of proposal.notes) {
-      assert.ok(note.step >= 16 && note.step < 80);
-      assert.ok(note.duration >= 1 && note.step + note.duration <= 80);
-      assert.ok(allowedPitches.includes(note.pitch));
-      assert.ok(note.velocity >= 1 && note.velocity <= 127);
-      assert.ok(!seenSteps.has(note.step));
-      seenSteps.add(note.step);
-    }
-    const bars = Array.from({ length: 4 }, (_, bar) => proposal.notes.filter(note =>
-      note.step >= 16 + bar * 16 && note.step < 16 + (bar + 1) * 16
-    ));
-    // The first bar echoes the source; later bars develop it and close.
-    assert.deepEqual(bars[0].map(note => note.step - 16), before.map(note => note.step));
-    assert.notDeepEqual(bars[1].map(note => note.step - 32), before.map(note => note.step));
-    assert.ok(bars[2].length > bars[0].length, 'the build should add rhythmic activity');
-    assert.ok(bars[3].length < bars[2].length, 'the cadence should leave a breath');
-    const final = bars[3].at(-1);
-    assert.ok(final.duration >= 4 && final.step + final.duration === 80, 'the cadence should hold its final note');
+  try {
+    const result = await generateMelodyContinuations(input);
+    assert.equal(request.url, '/api/melody/continue');
+    assert.equal(request.options.method, 'POST');
+    assert.equal(request.options.headers['Content-Type'], 'application/json');
+    const body = JSON.parse(request.options.body);
+    assert.deepEqual(body.sourceNotes, input.sourceNotes);
+    assert.deepEqual(body.previousNotes, input.previousNotes);
+    assert.deepEqual(body.contextNotes, input.contextNotes);
+    assert.equal(body.variationSeed, 2);
+    assert.equal(body.instruction, 'Make it dreamy');
+    assert.deepEqual(result, candidates);
+    assert.deepEqual(input, before);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 
-test('handles a later 7/8 bar and a sparse melody', () => {
-  const sourceBar = 3, stepsPerBar = 14;
-  const proposals = generateMelodyContinuations({
-    sourceNotes: [{ step: 42, pitch: 72, velocity: 100, duration: 14 }],
-    sourceBar, stepsPerBar, tempoBpm: 88, allowedPitches,
-  });
-  for (const proposal of proposals) {
-    for (const note of proposal.notes) {
-      assert.ok(note.step >= 56 && note.step + note.duration <= 112);
-      assert.ok(allowedPitches.includes(note.pitch));
-    }
+test('accepts valid cross-bar sustains and simultaneous different pitches', () => {
+  assert.deepEqual(validateMelodyResponse({ candidates }, input), candidates);
+});
+
+test('rejects model notes outside destination, off-grid, or duplicated', () => {
+  const replaceNote = note => ({ candidates: [
+    { ...candidates[0], notes: [note] }, candidates[1], candidates[2],
+  ] });
+  assert.throws(() => validateMelodyResponse(replaceNote({ step: 16, pitch: 64, velocity: 90, duration: 1 }), input), /outside the playable bars/);
+  assert.throws(() => validateMelodyResponse(replaceNote({ step: 32, pitch: 63, velocity: 90, duration: 1 }), input), /outside the playable bars/);
+  assert.throws(() => validateMelodyResponse(replaceNote({ step: 95, pitch: 64, velocity: 90, duration: 2 }), input), /outside the playable bars/);
+  assert.throws(() => validateMelodyResponse({ candidates: [
+    { ...candidates[0], notes: [candidates[0].notes[0], candidates[0].notes[0]] }, candidates[1], candidates[2],
+  ] }, input), /duplicate notes/);
+  assert.throws(() => validateMelodyResponse({ candidates: [candidates[0], candidates[0], candidates[2]] }, input), /invalid idea/);
+});
+
+test('does not call the service when source is empty or spills into target', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => { throw new Error('fetch must not run'); };
+  try {
+    await assert.rejects(generateMelodyContinuations({ ...input, sourceNotes: [] }), /Add at least one note/);
+    await assert.rejects(generateMelodyContinuations({ ...input, sourceNotes: [{ step: 31, pitch: 64, velocity: 90, duration: 2 }] }), /Finish notes within/);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 
-test('Try new ideas changes the phrase and empty source is rejected', () => {
-  const input = phrase();
-  const first = generateMelodyContinuations({ ...input, variationSeed: 0 });
-  const second = generateMelodyContinuations({ ...input, variationSeed: 1 });
-  assert.notDeepEqual(first[0].notes, second[0].notes);
-  const sparse = {
-    sourceNotes: [{ step: 15, pitch: 72, velocity: 100, duration: 1 }],
-    sourceBar: 0, stepsPerBar: 16, tempoBpm: 180, allowedPitches,
-  };
-  const ideas = Array.from({ length: 20 }, (_, variationSeed) => generateMelodyContinuations({ ...sparse, variationSeed }));
-  for (let candidate = 0; candidate < 3; candidate++) {
-    assert.equal(new Set(ideas.map(idea => JSON.stringify(idea[candidate].notes))).size, 20);
+test('reports service configuration errors and never substitutes local notes', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: { code: 'AI_NOT_CONFIGURED', message: 'Set OPENAI_API_KEY to enable the melody agent.' } }), { status: 503 });
+  try {
+    await assert.rejects(generateMelodyContinuations(input), /Set OPENAI_API_KEY/);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
-  assert.throws(() => generateMelodyContinuations({ ...input, sourceNotes: [] }), /Add at least one note/);
+});
+
+test('passes AbortSignal to fetch for closing or replacing a request', async () => {
+  const originalFetch = globalThis.fetch;
+  const controller = new AbortController();
+  globalThis.fetch = async (_, options) => {
+    assert.equal(options.signal, controller.signal);
+    controller.abort();
+    throw new DOMException('Aborted', 'AbortError');
+  };
+  try {
+    await assert.rejects(generateMelodyContinuations(input, { signal: controller.signal }), { name: 'AbortError' });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
