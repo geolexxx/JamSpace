@@ -1,202 +1,119 @@
 # JamSpace
 
-**Real-time collaborative music sequencer powered by [SpacetimeDB](https://spacetimedb.com).**
+**A collaborative music workspace for turning a first idea into a shared, listenable sketch.**
 
-**Prototype:** https://client-jamspace0606.vercel.app/
+[Try the JamSpace 1.1 beta](https://jamspace-v11-geolexxx.vercel.app/) · [Read the 1.1 product brief](docs/JamSpace_1.1_PRD.md) · [Explore the AI workflow](docs/JamSpace_AI_Jam_Partner_PRD.md)
 
-Multiple musicians share a single session and edit tracks simultaneously — every note, mute, tempo change, and arrangement edit syncs instantly across all connected clients. SpacetimeDB handles shared music data. The optional local AI service handles model calls for **Continue my melody** so its API key stays out of the browser.
+JamSpace is a browser-based step sequencer where people can edit the same project in real time. Version 1.1 adds a project workspace, active collaborator presence, WAV export, and **Continue my melody**: an AI workflow that turns an initial bar into four more editable bars across Drums, Bass, Synth, and Lead.
 
----
+**My role in 1.1:** solo full stack developer. I defined the product scope, designed the workflow, built the React client and Rust/SpacetimeDB changes, integrated the model service, and deployed the beta. This README describes the working prototype and the product choices behind it; the linked PRDs describe a broader target state.
 
-## Table of Contents
+## The problem
 
-- [How It Works](#how-it-works)
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Data Model](#data-model)
-- [Server Reducers (API)](#server-reducers-api)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-- [Development Workflow](#development-workflow)
-- [Features](#features)
-- [Troubleshooting](#troubleshooting)
+A small group can quickly sketch one musical bar, but moving from that bar to a complete phrase takes repetitive editing. Collaboration adds another hurdle: people need to find the right project, see who is working, and leave with something they can play outside the editor.
 
----
+JamSpace tests a simple loop for **2–4 people making a short musical sketch**:
 
-## How It Works
+1. Start a project and invite someone into the same editable session.
+2. Build an idea together, or ask AI to continue it and choose what to keep.
+3. Arrange the result and export a WAV file.
 
-SpacetimeDB is the single source of truth. The server is a compiled Rust module that defines **tables** (the shared state) and **reducers** (the only way to mutate that state). Each client:
+The user need and the impact of each feature are product hypotheses, not measured outcomes yet.
 
-1. Opens a WebSocket connection to the database.
-2. Subscribes to SQL queries over the public tables.
-3. Receives live row inserts/updates/deletes as other users make changes.
-4. Calls reducers (e.g. `add_note`, `set_playback`) to write changes, which then propagate back to everyone.
+## Try the prototype
 
-Audio is rendered **locally** in each browser via Tone.js, driven entirely by the synchronized table data. Nobody streams audio to anyone — each client independently sonifies the shared sequence, so playback stays in sync because the underlying state is in sync.
+1. Open the [live beta](https://jamspace-v11-geolexxx.vercel.app/), enter a stage name, and create a project.
+2. Add notes to a track. Use **Invite** to copy the editor link, then open it in a second browser; both browsers should see edits and active collaborators.
+3. Use **Continue my melody** after writing a bar. Enter the private testing code if you have one, audition three four-bar candidates, then apply the one you want to edit further.
+4. Arrange your patterns in the Song view and use **Export** to download a WAV file.
 
-**Continue my melody** sends the latest bar and up to four preceding bars from Drums, Bass, Synth, and Lead, plus an optional short instruction, to a model service. It returns three editable four-bar arrangements covering all four instruments, even when some source tracks are empty. Preview is private; one SpacetimeDB reducer checks all four tracks for conflicts and saves the selected arrangement together when the user chooses Apply. See [the feature PRD](docs/JamSpace_AI_Jam_Partner_PRD.md) for scope and remaining validation.
+**Prototype access boundary:** projects are visible on the workspace home and editable by anyone who opens them. An editor link is a convenient entry point, not a private invitation. Do not put confidential material here. AI use is gated by a shared testing code; the site has no per-user AI quota.
 
----
+## What shipped in 1.1
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│                SpacetimeDB Server                 │
-│  (Rust module — single source of truth)           │
-│                                                   │
-│  Tables:  session · track · pattern ·             │
-│           arrangement_block · note ·              │
-│           user_presence                           │
-│                                                   │
-│  Reducers: add_note · remove_note · set_playback ·│
-│            create_track · toggle_mute · …         │
-└───────────────────────┬───────────────────────────┘
-                        │  WebSocket subscriptions
-            ┌───────────┴───────────┐
-        Client A                Client B
-   (React + Tone.js)        (React + Tone.js)
-   edits drum track          edits synth track
-```
-
-A change made by Client A is written through a reducer, committed to the table, and pushed to Client B's subscription in the same transaction loop — no polling, no manual refresh.
-
----
-
-## Tech Stack
-
-| Layer             | Technology                          |
-| ----------------- | ----------------------------------- |
-| Real-time backend | SpacetimeDB `1.1` (Rust module)     |
-| Client SDK        | `spacetimedb` (TypeScript) `^2.4.1` |
-| Frontend          | React 18 + TypeScript + Vite 5      |
-| Audio engine      | Tone.js `^14.7`                     |
-| Styling           | Tailwind CSS 3                      |
-
----
-
-## Data Model
-
-All tables are declared `public` so clients can subscribe to them directly.
-
-| Table               | Key fields                                                                              | Purpose                                                                 |
-| ------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `session`           | `session_id`, `name`, `tempo_bpm`, `is_playing`, `current_beat`, `time_sig_top/bottom`  | A jam session: global tempo, play state, and time signature.            |
-| `track`             | `track_id`, `session_id`, `instrument`, `owner_identity`, `color`, `is_muted`, `volume` | An instrument lane (drums / bass / synth / lead by default).            |
-| `pattern`           | `pattern_id`, `session_id`, `name`, `color`, `num_bars`                                 | A reusable musical phrase spanning 1–32 bars (defaults to 2).           |
-| `arrangement_block` | `block_id`, `session_id`, `pattern_id`, `position`                                      | Places a pattern at a position in the song timeline.                    |
-| `note`              | `note_id`, `pattern_id`, `track_id`, `step`, `pitch`, `velocity`, `duration`            | A single note within a pattern. `duration` is in 16th-note steps.       |
-| `user_presence`     | `identity`, `session_id`, `username`, `active_track_id`, `last_seen`                     | Who is online, which session and track they're working on.              |
-
-A new session is seeded with four default tracks (drums `#f87171`, bass `#60a5fa`, synth `#a78bfa`, lead `#34d399`) and two patterns ("Intro", "Verse"), arranged back to back.
-
----
-
-## Server Reducers (API)
-
-Reducers are the write API. Clients never touch tables directly — they call these.
-
-**Session & setup**
-- `setup_default_session()` — seeds the first session if none exists.
-- `create_new_session(name)` — creates a fresh session with default tracks, patterns, and arrangement.
-- `join_session(session_id, username)` — registers/updates the caller's presence.
-- `set_playback(session_id, is_playing, tempo_bpm)` — shared play/pause + BPM.
-- `set_time_signature(session_id, top, bottom)` — change the session time signature.
-
-**Tracks**
-- `create_track(session_id, instrument, color)`
-- `remove_track(track_id)` — also deletes the track's notes.
-- `toggle_mute(track_id)`
-- `set_volume(track_id, volume)` — clamped to `0.0–1.0`.
-- `set_active_track(track_id)` — updates which track the caller is editing (for presence).
-
-**Patterns & arrangement**
-- `create_pattern(session_id, name, color)`
-- `rename_pattern(pattern_id, name)`
-- `set_pattern_bars(pattern_id, num_bars)` — clamped to `1–32`.
-- `add_arrangement_block(session_id, pattern_id, position)`
-- `remove_arrangement_block(block_id)`
-
-**Notes**
-- `add_note(pattern_id, track_id, step, pitch, velocity, duration)` — no-op if an identical note already exists.
-- `set_note_duration(note_id, duration)` — minimum 1 step.
-- `remove_note(pattern_id, track_id, step, pitch)`
-- `clear_pattern_notes(pattern_id)`
-- `clear_notes(session_id)` — clears notes across all patterns in the session.
-
----
-
-## Project Structure
-
-```
-JamSpace/
-├── client/                     # React + Vite frontend
-│   ├── src/
-│   │   ├── App.tsx             # connection, subscriptions, top-level state
-│   │   ├── main.tsx            # React entry point
-│   │   ├── index.css           # Tailwind + base styles
-│   │   ├── components/         # JoinModal, SessionView, sequencer UI
-│   │   ├── spacetime/          # connection helper + typed table re-exports
-│   │   └── module_bindings/    # auto-generated SpacetimeDB TS bindings
-│   ├── index.html
-│   └── package.json
-├── server/                     # SpacetimeDB Rust module
-│   ├── src/lib.rs              # tables + reducers
-│   └── Cargo.toml
-└── ai-service/                 # Local model API for melody continuation
-```
-
-> The client subscribes to all six public tables on connect:
-> `session`, `track`, `pattern`, `arrangement_block`, `note`, `user_presence`.
-
----
-
-## Development Workflow
-
-| Task                         | Command                                                                                   |
-| ---------------------------- | ----------------------------------------------------------------------------------------- |
-| Start the database           | `spacetime start`                                                                         |
-| Publish server changes       | `cd server && spacetime publish --server local jamspace`                                  |
-| Regenerate client bindings   | `spacetime generate --lang typescript --out-dir client/src/module_bindings --project-path server` |
-| Run the dev server           | `cd client && npm run dev`                                                                 |
-| Run the local melody AI      | Set `OPENAI_API_KEY` in the service terminal, then `cd ai-service && npm start`           |
-| Build for production         | `cd client && npm run build`                                                              |
-| Preview the production build | `cd client && npm run preview`                                                            |
-
-A typical iteration when changing backend logic: edit `lib.rs` → `spacetime publish` → `spacetime generate` → the Vite dev server hot-reloads the client.
-
-### Melody AI setup
-
-Use Node 20 or newer. Start `ai-service` in a separate terminal with `OPENAI_API_KEY` set in that terminal's environment, then run the client dev server. In zsh, `read -s OPENAI_API_KEY` lets you paste the key without displaying it; press Return, then run `export OPENAI_API_KEY` and `npm start`. Restart the service after changing its code. The local AI service listens on `127.0.0.1:8787`; Vite forwards `/api` requests to it. `OPENAI_MODEL` optionally changes the model (default: `gpt-6-luna`). Keep the API key out of `client/` and out of Git. If the service or key is unavailable, **Continue my melody** shows an error; it does not silently generate rule-based notes. The local service is intended for development and has no project identity or per-user quota, so it must not be exposed publicly as-is.
-
-### Version 1.1 Vercel release
-
-The 1.1 beta uses a fresh MainCloud database, `jamspace-v11-geolexxx`, under the `@geolexxx` account. It does not contain projects from the earlier `jamspace` database. The database dashboard is [spacetimedb.com/jamspace-v11-geolexxx](https://spacetimedb.com/jamspace-v11-geolexxx).
-
-Create a **new** Vercel project from this GitHub repository, with **Root Directory** set to `client` and **Production Branch** set to `version1.1`. The `client/vercel.json` file supplies the Vite SPA route and the `/api/melody/continue` function. `client/.env.production` contains only the public database address and name. Set these server-side environment variables for Production and Preview before enabling AI:
-
-| Variable | Value |
+| User job | Working prototype |
 | --- | --- |
-| `OPENAI_API_KEY` | Secret key from the limited JamSpace Testing OpenAI project; never prefix this variable with `VITE_` |
-| `JAMSPACE_AI_ACCESS_CODE` | A private testing code, shared only with invited AI testers |
-| `OPENAI_MODEL` | Optional; defaults to `gpt-6-luna` |
+| Find a place to create | Project workspace with create, search, and project entry |
+| Make music together | Shared note, pattern, arrangement, tempo, and track edits; active collaborator presence |
+| Move past the first bar | Three AI-generated, four-bar candidates covering Drums, Bass, Synth, and Lead |
+| Keep creative control | Private candidate audition and an explicit **Apply** step; accepted notes remain editable |
+| Take the work elsewhere | Browser-rendered WAV export of the current Song arrangement |
 
-The production client asks for the AI testing code on first use and keeps it only for the browser session. The Vercel function refuses AI requests unless both server secrets are configured. Keep the OpenAI project's hard spend limit enabled, and add a Vercel Firewall rate limit for `/api/melody/continue` before sharing the site broadly. Changing Vercel environment variables requires a new deployment.
+The sequencer uses four default instruments, reusable patterns, and an arrangement timeline. Each browser renders audio locally from the shared project state. Shared play/pause and BPM are implemented; sample-accurate listening across browsers has not been measured.
 
-Verify the deployed home page, creating and joining a project, live edits in two browsers, WAV export, and all four instrument AI suggestions. `GET /api/melody/health` should return `{ "ready": true }` when the AI secrets are configured. A new Vercel project gets a new `*.vercel.app` URL; it does not replace the existing site.
+## Product decisions
+
+| Decision | Why it matters | Current tradeoff |
+| --- | --- | --- |
+| Share editable music data instead of an audio stream | Collaborators can change individual notes and build on the same arrangement | Each browser renders its own audio; synchronized controls do not prove synchronized sound |
+| Generate **candidates**, then let the user audition and apply one | AI helps finish a phrase while the user chooses and edits the result | Suggestions are temporary until accepted; there is no one-click undo for an entire accepted candidate |
+| Continue all four instruments | A full phrase is more useful to hear than an isolated synth line | Model quality across different musical styles still needs user testing |
+| Export a snapshot taken when the user clicks Download | Later collaborator edits cannot silently change the file being rendered | Export is WAV only, with a five-minute limit |
+
+The AI request uses the latest occupied bar and up to four preceding bars as context. A candidate is previewed only in the requesting browser. On **Apply**, a SpacetimeDB reducer rechecks the source and destination before writing the four-track result in one transaction; a conflicting edit rejects the apply instead of overwriting another person's notes.
+
+WAV export produces 44.1 kHz, 16-bit stereo PCM from the current Song arrangement. Shared track mute and volume settings are reflected in the file. See [audio export notes and sample credits](docs/audio-export.md).
+
+## What is still open
+
+The [1.1 PRD](docs/JamSpace_1.1_PRD.md) is a target-state document, not a claim that every requirement shipped. Its earlier single-track AI requirements also predate the current four-instrument implementation.
+
+| Priority for a wider release | Work remaining |
+| --- | --- |
+| Access and cost control | Private projects, server-enforced roles, revocable invitations, authenticated AI quotas, and rate limiting |
+| Product validation | Observe two-person project completion, time from first bar to an auditionable phrase, AI candidate acceptance, export reliability, and model quality |
+| Delivery | Immutable, listener-only published versions and revocable listening links |
+| Music workflow | Whole-candidate undo and broader export options |
+
+No adoption, retention, model-quality, or time-saved result is reported here. The proposed success metrics in the PRD are evaluation targets, not achieved results.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[React editor] <-->|Live subscriptions and reducers| B[SpacetimeDB Rust module]
+    A --> C[Local Tone.js playback and WAV rendering]
+    A -->|Continue request| D[Server-side melody endpoint]
+    D -->|Server-held API key| E[OpenAI model]
+    D -->|Editable candidates| A
+```
+
+SpacetimeDB stores sessions, tracks, patterns, arrangement blocks, notes, and presence. Clients subscribe to the shared tables and call reducers for writes. The production AI endpoint keeps the OpenAI key on the server and requires a separate testing code. Production builds point to the fresh `jamspace-v11-geolexxx` MainCloud database; it does not contain projects from the older JamSpace site.
+
+### Repository map
+
+| Path | Purpose |
+| --- | --- |
+| [`client/`](client/) | React, TypeScript, Vite editor; local audio, WAV export, and Vercel melody endpoint |
+| [`server/`](server/) | SpacetimeDB Rust schema and reducers |
+| [`ai-service/`](ai-service/) | Local Node service for model-backed development |
+| [`docs/`](docs/) | Product requirements, AI workflow, and audio export notes |
+
+### Run locally
+
+Use Node.js 20+ and the SpacetimeDB CLI. The checked-in client bindings come from the server schema. From the repository root, start the local database in one terminal:
+
+```bash
+spacetime start
+```
+
+In a second terminal, publish the server module and start the client:
+
+```bash
+cd server && spacetime publish --server local jamspace
+cd ../client && npm ci && VITE_STDB_URI=ws://127.0.0.1:3000 VITE_MODULE_NAME=jamspace npm run dev
+```
+
+For model-backed continuation, set `OPENAI_API_KEY` only in the local service's environment, then run `cd ai-service && npm start` from the repository root in another terminal. Vite forwards `/api` to that service on `127.0.0.1:8787`. Never put the API key in a `VITE_` variable or commit it. The feature reports an error when the service or key is unavailable.
+
+After a server schema change, regenerate TypeScript bindings from the repository root with:
+
+```bash
+spacetime generate --lang typescript --out-dir client/src/module_bindings --project-path server
+```
+
+The 1.1 beta is deployed separately on Vercel. Its production AI endpoint needs server-side `OPENAI_API_KEY` and `JAMSPACE_AI_ACCESS_CODE`; changing those settings requires a new deployment. The local development service is not a public API and should not be exposed as one.
 
 ---
 
-## Features
-
-- **16-step sequencer** with default instrument tracks (drums, bass, synth, lead).
-- **Pattern + arrangement model** — build reusable patterns (1–32 bars) and lay them out into a song timeline.
-- **Real-time multi-user editing** — every note, mute, volume, and arrangement change syncs instantly via SpacetimeDB subscriptions.
-- **Shared playback control** — play/pause and BPM are session-wide and synced across all users.
-- **User presence** — see who's online and which track each person is currently editing.
-- **Per-track controls** — mute toggle and volume per track.
-- **Local audio** — Tone.js renders sound in each browser, driven purely by the shared table state.
-
----
-
-*JamSpace is a collaborative music prototype. Shared edits use SpacetimeDB; model-backed melody suggestions require an OpenAI API key held by the server.*
+JamSpace 1.1 is a working prototype and a product case study. Its open workspace is intended for testing, not private collaboration.
