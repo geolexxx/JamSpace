@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import { continueMelody, MelodyServiceError } from "./melody.js";
 
-const MAX_BODY_BYTES = 24 * 1024;
+const MAX_BODY_BYTES = 64 * 1024;
 
 function sendJson(response, status, value) {
   response.writeHead(status, {

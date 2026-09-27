@@ -1,4 +1,4 @@
-/** A private proposal from the melody agent. Steps are absolute within a pattern. */
+/** AI proposals use absolute steps within one pattern. */
 export interface MelodyNote {
   step: number;
   pitch: number;
@@ -6,18 +6,24 @@ export interface MelodyNote {
   duration: number;
 }
 
-export interface MelodyContinuationInput {
+export interface ArrangedNote extends MelodyNote {
+  trackId: number;
+}
+
+export interface MelodyTrackInput {
+  trackId: number;
+  instrument: "drums" | "bass" | "synth" | "lead";
   sourceNotes: readonly MelodyNote[];
-  /** Earlier notes on the selected track give the agent phrase context. */
   previousNotes?: readonly MelodyNote[];
-  /** Notes from other melodic tracks provide harmonic context. */
-  contextNotes?: readonly MelodyNote[];
+  allowedPitches: readonly number[];
+}
+
+export interface MelodyContinuationInput {
+  tracks: readonly MelodyTrackInput[];
   sourceBar: number;
   stepsPerBar: number;
   tempoBpm: number;
-  allowedPitches: readonly number[];
   variationSeed?: number;
-  /** Optional direction in the musician's own words. */
   instruction?: string;
 }
 
@@ -25,11 +31,12 @@ export interface MelodyContinuation {
   id: "familiar" | "lift" | "answer";
   label: string;
   description: string;
-  /** Four new bars after the source; original notes are never returned. */
-  notes: MelodyNote[];
+  /** Four new bars for drums, bass, synth, and lead. Original notes are excluded. */
+  notes: ArrangedNote[];
 }
 
 const CANDIDATE_IDS = ["familiar", "lift", "answer"] as const;
+const INSTRUMENTS = ["drums", "bass", "synth", "lead"] as const;
 const FOUR_BARS = 4;
 const MAX_STEP = 65535;
 
@@ -59,65 +66,82 @@ function prepareInput(input: MelodyContinuationInput): MelodyContinuationInput {
       !integerIn(input.tempoBpm, 1, 400)) {
     throw new Error("Select a valid bar, time signature, and tempo before continuing.");
   }
-  const targetEnd = (input.sourceBar + 1 + FOUR_BARS) * input.stepsPerBar;
-  if (targetEnd > MAX_STEP) throw new Error("This phrase is too far into the pattern to add four bars.");
-  const sourceNotes = cleanInputNotes(input.sourceNotes, 64, "Source notes");
   const sourceStart = input.sourceBar * input.stepsPerBar;
   const targetStart = sourceStart + input.stepsPerBar;
-  if (sourceNotes.length === 0) throw new Error("Add at least one note to the selected bar first.");
-  if (sourceNotes.some(note => note.step < sourceStart || note.step >= targetStart || note.step + note.duration > targetStart)) {
-    throw new Error("Finish notes within the selected bar before continuing its melody.");
+  if (targetStart + FOUR_BARS * input.stepsPerBar > MAX_STEP) {
+    throw new Error("This phrase is too far into the pattern to add four bars.");
   }
-  const previousNotes = cleanInputNotes(input.previousNotes, 64, "Earlier melody notes")
-    .filter(note => note.step < sourceStart && note.step + note.duration <= sourceStart);
-  const contextNotes = cleanInputNotes(input.contextNotes, 128, "Harmony notes");
-  const allowedPitches = [...new Set(input.allowedPitches)];
-  if (allowedPitches.length < 2 || !allowedPitches.every(pitch => integerIn(pitch, 0, 127))) {
-    throw new Error("Choose a melodic track with at least two playable pitches.");
+  if (!Array.isArray(input.tracks) || input.tracks.length !== INSTRUMENTS.length ||
+      new Set(input.tracks.map(track => track.trackId)).size !== INSTRUMENTS.length ||
+      INSTRUMENTS.some(instrument => input.tracks.filter(track => track.instrument === instrument).length !== 1)) {
+    throw new Error("Add one drums, bass, synth, and lead track before continuing.");
+  }
+  const tracks = input.tracks.map(track => {
+    if (!integerIn(track.trackId, 0, 0xffffffff)) throw new Error("Choose valid tracks before continuing.");
+    const sourceNotes = cleanInputNotes(track.sourceNotes, 64, `${track.instrument} source notes`);
+    if (sourceNotes.some(note => note.step < sourceStart || note.step >= targetStart || note.step + note.duration > targetStart)) {
+      throw new Error("Finish notes within the selected bar before continuing the arrangement.");
+    }
+    const previousNotes = cleanInputNotes(track.previousNotes, 64, `${track.instrument} earlier notes`)
+      .filter(note => note.step < sourceStart && note.step + note.duration <= sourceStart);
+    const allowedPitches = [...new Set(track.allowedPitches)];
+    if (allowedPitches.length < 2 || !allowedPitches.every(pitch => integerIn(pitch, 0, 127))) {
+      throw new Error(`The ${track.instrument} track needs at least two playable pitches.`);
+    }
+    return { trackId: track.trackId, instrument: track.instrument, sourceNotes, previousNotes, allowedPitches };
+  });
+  if (!tracks.some(track => track.sourceNotes.length > 0)) {
+    throw new Error("Add at least one note to the latest bar before continuing.");
   }
   const variationSeed = input.variationSeed ?? 0;
   if (!integerIn(variationSeed, 0, 1_000_000_000)) throw new Error("Choose a valid variation number.");
   const instruction = input.instruction?.trim() ?? "";
   if (instruction.length > 300) throw new Error("Keep your direction under 300 characters.");
-  return { sourceNotes, previousNotes, contextNotes, sourceBar: input.sourceBar,
-    stepsPerBar: input.stepsPerBar, tempoBpm: input.tempoBpm,
-    allowedPitches, variationSeed, instruction };
+  return { tracks, sourceBar: input.sourceBar, stepsPerBar: input.stepsPerBar,
+    tempoBpm: input.tempoBpm, variationSeed, instruction };
 }
 
-/** Treat model output as untrusted until every note is safe to preview and apply. */
+/** The model response must be playable and include every instrument in every new bar. */
 export function validateMelodyResponse(value: unknown, input: MelodyContinuationInput): MelodyContinuation[] {
   if (!isRecord(value) || !Array.isArray(value.candidates) || value.candidates.length !== 3) {
     throw new Error("The melody agent returned an incomplete set of ideas. Try again.");
   }
   const start = (input.sourceBar + 1) * input.stepsPerBar;
   const end = start + FOUR_BARS * input.stepsPerBar;
-  const allowed = new Set(input.allowedPitches);
+  const allowedByTrack = new Map(input.tracks.map(track => [track.trackId, new Set(track.allowedPitches)]));
   const seenIds = new Set<string>();
   const candidates: MelodyContinuation[] = [];
   for (const raw of value.candidates) {
     if (!isRecord(raw) || !CANDIDATE_IDS.includes(raw.id as MelodyContinuation["id"]) || seenIds.has(raw.id as string) ||
         typeof raw.label !== "string" || raw.label.trim().length === 0 || raw.label.length > 60 ||
         typeof raw.description !== "string" || raw.description.trim().length === 0 || raw.description.length > 240 ||
-        !Array.isArray(raw.notes) || raw.notes.length < 1 || raw.notes.length > 128) {
+        !Array.isArray(raw.notes) || raw.notes.length < 16 || raw.notes.length > 256) {
       throw new Error("The melody agent returned an invalid idea. Try again.");
     }
     seenIds.add(raw.id as string);
     const noteKeys = new Set<string>();
-    const notes: MelodyNote[] = [];
+    const coverage = new Set<string>();
+    const notes: ArrangedNote[] = [];
     for (const rawNote of raw.notes) {
-      if (!isRecord(rawNote) || !integerIn(rawNote.step, start, end - 1) ||
-          !integerIn(rawNote.pitch, 0, 127) || !allowed.has(rawNote.pitch) ||
+      if (!isRecord(rawNote) || !integerIn(rawNote.trackId, 0, 0xffffffff) || !allowedByTrack.has(rawNote.trackId) ||
+          !integerIn(rawNote.step, start, end - 1) || !integerIn(rawNote.pitch, 0, 127) ||
+          !allowedByTrack.get(rawNote.trackId)!.has(rawNote.pitch) ||
           !integerIn(rawNote.velocity, 1, 127) || !integerIn(rawNote.duration, 1, MAX_STEP) ||
           rawNote.step + rawNote.duration > end) {
-        throw new Error("The melody agent returned notes outside the playable bars. Try again.");
+        throw new Error("The melody agent returned notes outside the playable tracks or bars. Try again.");
       }
-      const key = `${rawNote.step}:${rawNote.pitch}`;
+      const key = `${rawNote.trackId}:${rawNote.step}:${rawNote.pitch}`;
       if (noteKeys.has(key)) throw new Error("The melody agent returned duplicate notes. Try again.");
       noteKeys.add(key);
-      notes.push({ step: rawNote.step, pitch: rawNote.pitch, velocity: rawNote.velocity, duration: rawNote.duration });
+      coverage.add(`${rawNote.trackId}:${Math.floor((rawNote.step - start) / input.stepsPerBar)}`);
+      notes.push({ trackId: rawNote.trackId, step: rawNote.step, pitch: rawNote.pitch,
+        velocity: rawNote.velocity, duration: rawNote.duration });
+    }
+    if (input.tracks.some(track => Array.from({ length: FOUR_BARS }, (_, bar) => `${track.trackId}:${bar}`).some(key => !coverage.has(key)))) {
+      throw new Error("The melody agent skipped an instrument or bar. Try again.");
     }
     candidates.push({ id: raw.id as MelodyContinuation["id"], label: raw.label.trim(),
-      description: raw.description.trim(), notes: notes.sort((a, b) => a.step - b.step || a.pitch - b.pitch) });
+      description: raw.description.trim(), notes: notes.sort((a, b) => a.step - b.step || a.trackId - b.trackId || a.pitch - b.pitch) });
   }
   if (seenIds.size !== CANDIDATE_IDS.length || CANDIDATE_IDS.some(id => !seenIds.has(id))) {
     throw new Error("The melody agent returned an incomplete set of ideas. Try again.");

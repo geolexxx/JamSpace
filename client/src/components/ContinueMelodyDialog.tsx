@@ -3,7 +3,7 @@ import type { MelodyContinuation } from "../ai/continueMelody";
 import "./ContinueMelodyDialog.css";
 
 interface Props {
-  trackName: string;
+  tracks: { trackId: number; instrument: string }[];
   sourceBar: number;
   stepsPerBar: number;
   sourceNoteCount: number;
@@ -23,38 +23,44 @@ interface Props {
 
 const BAR_COUNT = 4;
 
-function MiniRoll({ candidate, sourceBar, stepsPerBar }: {
+function MiniRoll({ candidate, sourceBar, stepsPerBar, tracks }: {
   candidate: MelodyContinuation;
   sourceBar: number;
   stepsPerBar: number;
+  tracks: Props["tracks"];
 }) {
   const startStep = (sourceBar + 1) * stepsPerBar;
   const totalSteps = BAR_COUNT * stepsPerBar;
-  const pitches = candidate.notes.map(note => note.pitch);
-  const low = pitches.length ? Math.min(...pitches) - 1 : 59;
-  const high = pitches.length ? Math.max(...pitches) + 1 : 72;
-  const pitchRange = Math.max(8, high - low + 1);
-
   return (
-    <div className="melody-mini-roll" aria-label={`${candidate.notes.length} notes over four bars`} role="img">
-      {Array.from({ length: BAR_COUNT - 1 }, (_, index) => (
-        <span key={index} className="melody-mini-roll-bar" style={{ left: `${((index + 1) / BAR_COUNT) * 100}%` }} />
-      ))}
-      {candidate.notes.map((note, index) => {
-        const relativeStep = note.step - startStep;
-        if (relativeStep >= totalSteps || relativeStep + note.duration <= 0) return null;
-        const left = Math.max(0, relativeStep);
-        const right = Math.min(totalSteps, relativeStep + Math.max(1, note.duration));
+    <div className="melody-mini-arrangement" aria-label={`${candidate.notes.length} notes for all four instruments over four bars`} role="img">
+      {tracks.map(track => {
+        const notes = candidate.notes.filter(note => note.trackId === track.trackId);
+        const pitches = notes.map(note => note.pitch);
+        const low = pitches.length ? Math.min(...pitches) - 1 : 59;
+        const high = pitches.length ? Math.max(...pitches) + 1 : 72;
+        const pitchRange = Math.max(8, high - low + 1);
         return (
-          <span
-            key={`${note.step}-${note.pitch}-${index}`}
-            className="melody-mini-roll-note"
-            style={{
-              left: `${(left / totalSteps) * 100}%`,
-              width: `${Math.max(0.7, ((right - left) / totalSteps) * 100)}%`,
-              top: `${Math.max(3, Math.min(89, ((high - note.pitch) / pitchRange) * 88 + 3))}%`,
-            }}
-          />
+          <div className="melody-mini-track" key={track.trackId}>
+            <span className="melody-mini-track-label">{track.instrument}</span>
+            <div className={`melody-mini-roll melody-mini-roll-${track.instrument}`}>
+              {Array.from({ length: BAR_COUNT - 1 }, (_, index) => (
+                <span key={index} className="melody-mini-roll-bar" style={{ left: `${((index + 1) / BAR_COUNT) * 100}%` }} />
+              ))}
+              {notes.map((note, index) => {
+                const relativeStep = note.step - startStep;
+                const left = Math.max(0, relativeStep);
+                const right = Math.min(totalSteps, relativeStep + Math.max(1, note.duration));
+                return (
+                  <span key={`${note.step}-${note.pitch}-${index}`} className="melody-mini-roll-note"
+                    style={{
+                      left: `${(left / totalSteps) * 100}%`,
+                      width: `${Math.max(0.7, ((right - left) / totalSteps) * 100)}%`,
+                      top: `${Math.max(2, Math.min(75, ((high - note.pitch) / pitchRange) * 75 + 2))}%`,
+                    }} />
+                );
+              })}
+            </div>
+          </div>
         );
       })}
     </div>
@@ -62,7 +68,7 @@ function MiniRoll({ candidate, sourceBar, stepsPerBar }: {
 }
 
 export default function ContinueMelodyDialog({
-  trackName, sourceBar, stepsPerBar, sourceNoteCount, patternUseCount, candidates,
+  tracks, sourceBar, stepsPerBar, sourceNoteCount, patternUseCount, candidates,
   isGenerating, isApplying, playingCandidateId, error, disabledReason,
   onGenerate, onPreview, onStopPreview, onApply, onClose,
 }: Props) {
@@ -117,7 +123,7 @@ export default function ContinueMelodyDialog({
           <div>
             <div className="melody-dialog-eyebrow"><span aria-hidden="true">✦</span> AI melody partner</div>
             <h2 ref={headingRef} tabIndex={-1} id="melody-dialog-title">Continue my melody</h2>
-            <p id="melody-dialog-description">Hear how the bar you wrote could grow into a longer phrase.</p>
+            <p id="melody-dialog-description">Hear your idea grow into a full arrangement across all four instruments.</p>
           </div>
           <button type="button" className="melody-dialog-close" aria-label="Close melody suggestions" onClick={onClose} disabled={isApplying}>×</button>
         </div>
@@ -125,7 +131,7 @@ export default function ContinueMelodyDialog({
         <div className="melody-source-summary">
           <span className="melody-source-icon" aria-hidden="true">♫</span>
           <div className="melody-source-text">
-            <strong>{trackName}</strong>
+            <strong>Drums · Bass · Synth · Lead</strong>
             <span>Bar {sourceBarNumber} · {sourceNoteCount} {sourceNoteCount === 1 ? "note" : "notes"}</span>
           </div>
           <span className="melody-source-arrow" aria-hidden="true">→</span>
@@ -135,13 +141,13 @@ export default function ContinueMelodyDialog({
           </div>
         </div>
 
-        <p className="melody-original-note">Your original bar stays as it is. Suggestions stay private until you apply one; you can keep editing the added notes in the grid.</p>
+        <p className="melody-original-note">Your original notes stay as they are. Each idea adds editable drums, bass, synth, and lead notes to four new bars. Suggestions stay private until you apply one.</p>
         <label className="melody-direction-label" htmlFor="melody-direction">Tell the AI where to take it <span>optional</span></label>
         <textarea id="melody-direction" className="melody-direction-input" value={instruction}
           onChange={event => setInstruction(event.target.value)} maxLength={300} rows={2}
           placeholder="e.g. Make it more dreamy, then end with a gentle rise"
           disabled={isApplying} />
-        <p className="melody-direction-hint">When you create suggestions, this bar, up to four earlier bars, nearby melodic tracks, and your direction are sent to the AI service.</p>
+        <p className="melody-direction-hint">The AI uses the latest bar and up to four earlier bars from all four instruments, plus your direction.</p>
         {patternUseCount > 1 && <p className="melody-dialog-warning" role="status">This pattern appears {patternUseCount} times in the song. Applying a continuation will extend every occurrence.</p>}
 
         {disabledReason && <p className="melody-dialog-warning" role="status">{disabledReason}</p>}
@@ -156,7 +162,7 @@ export default function ContinueMelodyDialog({
         {candidates.length === 0 ? (
           <div className="melody-empty-state">
             <span aria-hidden="true">♬</span>
-            <p>{isGenerating ? "The AI is developing three four-bar ideas from your melody…" : "Start with your idea. The AI will sketch the next four bars so you can hear the phrase take shape."}</p>
+            <p>{isGenerating ? "The AI is developing three four-bar arrangements…" : "Start with your idea. The AI will sketch all four instruments for the next four bars."}</p>
           </div>
         ) : (
           <div className="melody-candidate-list" role="group" aria-label="Melody variations">
@@ -173,7 +179,7 @@ export default function ContinueMelodyDialog({
                     <span className="melody-candidate-copy"><strong>{candidate.label}</strong><span>{candidate.description}</span></span>
                     <span className="melody-candidate-check" aria-hidden="true">{isSelected ? "✓" : ""}</span>
                   </button>
-                  <MiniRoll candidate={candidate} sourceBar={sourceBar} stepsPerBar={stepsPerBar} />
+                  <MiniRoll candidate={candidate} sourceBar={sourceBar} stepsPerBar={stepsPerBar} tracks={tracks} />
                   <div className="melody-candidate-actions">
                     <span>{candidate.notes.length} notes · 4 bars</span>
                     <button type="button" onClick={() => isPlaying ? onStopPreview() : onPreview(candidate)} disabled={busy} aria-label={`${isPlaying ? "Stop previewing" : "Preview"} ${candidate.label}`}>

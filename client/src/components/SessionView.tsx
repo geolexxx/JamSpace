@@ -8,13 +8,13 @@ import BeatRuler, { CELL_W, RULER_H } from "./BeatRuler";
 import TrackHeader, { HEADER_W } from "./TrackHeader";
 import DrumGrid from "./DrumGrid";
 import StepGrid, { melodyGridPitches } from "./StepGrid";
-import { generateMelodyContinuations, type MelodyContinuation, type MelodyNote } from "../ai/continueMelody";
+import { generateMelodyContinuations, type MelodyContinuation, type ArrangedNote } from "../ai/continueMelody";
 import { notesForMelodyPreview, playMelodyPreview } from "../audio/melodyPreview";
 import {
   startPlayback, stopPlayback, updateBpm, ensureAudioContext, updateLiveData,
   calcStepsPerBar, calcStepsPerBeat,
 } from "../audio/scheduler";
-import { initSamplers, isSamplersReady, onSamplersReady } from "../audio/instruments";
+import { DRUM_PADS, initSamplers, isSamplersReady, onSamplersReady } from "../audio/instruments";
 import {
   getConn, type Session, type Track, type Note, type UserPresence,
   type Pattern, type ArrangementBlock,
@@ -33,32 +33,34 @@ const INSTRUMENT_OPTIONS = [
 
 interface MelodyGenerationSnapshot {
   patternId: number;
-  trackId: number;
-  trackInstrument: string;
+  trackIds: number[];
+  tracks: { trackId: number; instrument: string }[];
   sourceBar: number;
   expectedNumBars: number;
   expectedStepsPerBar: number;
-  expectedSource: MelodyNote[];
+  expectedSource: ArrangedNote[];
   contextSignature: string;
-  sourceRows: Note[];
 }
 
-function melodyContextSignature(notes: Note[], tracks: Track[], selectedTrackId: number, sourceBar: number, stepsPerBar: number): string {
+function melodyContextSignature(notes: Note[], tracks: Track[], trackIds: number[], sourceBar: number, stepsPerBar: number): string {
   const start = Math.max(0, (sourceBar - 4) * stepsPerBar);
-  const sourceStart = sourceBar * stepsPerBar;
-  const sourceEnd = sourceStart + stepsPerBar;
-  const melodicTrackIds = new Set(tracks.filter(track => track.instrument !== "drums").map(track => track.trackId));
-  return JSON.stringify(notes
-    .filter(note => note.step >= start && note.step < sourceEnd && melodicTrackIds.has(note.trackId) &&
-      (note.trackId !== selectedTrackId || note.step < sourceStart))
+  const targetEnd = (sourceBar + 5) * stepsPerBar;
+  const selectedTrackIds = new Set(trackIds);
+  return JSON.stringify({
+    tracks: tracks.filter(track => selectedTrackIds.has(track.trackId))
+      .map(({ trackId, instrument }) => ({ trackId, instrument }))
+      .sort((a, b) => a.trackId - b.trackId),
+    notes: notes
+    .filter(note => note.step >= start && note.step < targetEnd && selectedTrackIds.has(note.trackId))
     .map(({ trackId, step, pitch, velocity, duration }) => ({ trackId, step, pitch, velocity, duration }))
-    .sort((a, b) => a.trackId - b.trackId || a.step - b.step || a.pitch - b.pitch || a.duration - b.duration || a.velocity - b.velocity));
+    .sort((a, b) => a.trackId - b.trackId || a.step - b.step || a.pitch - b.pitch || a.duration - b.duration || a.velocity - b.velocity),
+  });
 }
 
 function melodyApplyError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error ?? "");
   if (/unknown reducer|reducer not found|no such reducer|reducer does not exist|not registered/i.test(message)) {
-    return "This workspace needs the JamSpace 1.1 database update before you can apply suggestions.";
+    return "This workspace needs the JamSpace 1.1 database update before you can apply the four-track idea.";
   }
   if (/websocket|disconnect|network/i.test(message)) {
     return "Connection lost. Check the grid before trying again; the save may have completed.";
@@ -90,7 +92,6 @@ export default function SessionView({
   const [showExport,      setShowExport]      = useState(false);
   const [showMelody,      setShowMelody]      = useState(false);
   const showMelodyRef = useRef(false);
-  const [melodyTrackId,   setMelodyTrackId]   = useState<number | null>(null);
   const [melodyCandidates, setMelodyCandidates] = useState<MelodyContinuation[]>([]);
   const [melodyError,     setMelodyError]     = useState("");
   const [melodyGenerating, setMelodyGenerating] = useState(false);
@@ -355,33 +356,43 @@ export default function SessionView({
     });
   }, [tracks, localVolumes, playbackMode]);
 
-  const melodicTracks = useMemo(() => tracks.filter(track => track.instrument !== "drums"), [tracks]);
-  const selectedMelodyTrack = useMemo(() => {
-    const selected = melodicTracks.find(track => track.trackId === melodyTrackId);
-    if (selected) return selected;
-    const active = melodicTracks.find(track => track.trackId === activeTrackId);
-    if (active) return active;
-    const withNotes = melodicTracks.find(track => activeNotes.some(note => note.trackId === track.trackId));
-    return withNotes ?? melodicTracks[0] ?? null;
-  }, [melodicTracks, melodyTrackId, activeTrackId, activeNotes]);
-  const melodyTrackNotes = useMemo(
-    () => activeNotes.filter(note => note.trackId === selectedMelodyTrack?.trackId && note.step < (activePattern?.numBars ?? 0) * stepsPerBar),
-    [activeNotes, selectedMelodyTrack, activePattern, stepsPerBar],
+  const continuationTracks = useMemo(
+    () => (["drums", "bass", "synth", "lead"] as const)
+      .map(instrument => tracks.filter(track => track.instrument === instrument)
+        .sort((a, b) => {
+          const latest = (trackId: number) => activeNotes
+            .filter(note => note.trackId === trackId)
+            .reduce((step, note) => Math.max(step, note.step), -1);
+          return latest(b.trackId) - latest(a.trackId);
+        })[0])
+      .filter((track): track is Track => !!track),
+    [tracks, activeNotes],
   );
-  const melodySourceBar = melodyTrackNotes.length
-    ? Math.max(...melodyTrackNotes.map(note => Math.floor(note.step / stepsPerBar)))
+  const continuationTrackIds = useMemo(
+    () => new Set(continuationTracks.map(track => track.trackId)),
+    [continuationTracks],
+  );
+  const continuationNotes = useMemo(
+    () => activeNotes.filter(note => continuationTrackIds.has(note.trackId) &&
+      note.step < (activePattern?.numBars ?? 0) * stepsPerBar),
+    [activeNotes, continuationTrackIds, activePattern, stepsPerBar],
+  );
+  const melodySourceBar = continuationNotes.length
+    ? Math.max(...continuationNotes.map(note => Math.floor(note.step / stepsPerBar)))
     : 0;
-  const melodySourceNotes = melodyTrackNotes.filter(note => Math.floor(note.step / stepsPerBar) === melodySourceBar);
+  const melodySourceNotes = continuationNotes.filter(note => Math.floor(note.step / stepsPerBar) === melodySourceBar);
   const melodyTargetStart = (melodySourceBar + 1) * stepsPerBar;
   const melodyTargetEnd = melodyTargetStart + 4 * stepsPerBar;
-  const melodyDisabledReason = !activePattern || !selectedMelodyTrack
-    ? "Choose a pattern and a melodic track first."
-    : melodySourceNotes.length > 64
-      ? "This bar has too many notes to continue. Simplify it to 64 notes or fewer."
+  const melodyDisabledReason = !activePattern
+    ? "Choose a pattern first."
+    : continuationTracks.length !== 4
+      ? "Add a drums, bass, synth, and lead track first."
+    : continuationTracks.some(track => melodySourceNotes.filter(note => note.trackId === track.trackId).length > 64)
+      ? "A track has too many notes in this bar. Simplify it to 64 notes or fewer."
     : melodySourceBar + 5 > 32
       ? "Four more bars would exceed this pattern's 32-bar limit."
-      : activeNotes.some(note => note.trackId === selectedMelodyTrack.trackId && note.step < melodyTargetEnd && note.step + note.duration > melodyTargetStart)
-        ? "The next four bars already contain notes. Edit those notes before continuing."
+      : activeNotes.some(note => continuationTrackIds.has(note.trackId) && note.step < melodyTargetEnd && note.step + note.duration > melodyTargetStart)
+        ? "The next four bars contain notes on one of these tracks. Edit those notes before continuing."
         : "";
 
   const stopMelodyPreview = useCallback(() => {
@@ -417,39 +428,42 @@ export default function SessionView({
     melodySnapshotRef.current = null;
     setMelodyGenerating(true);
     try {
-      if (!activePattern || !selectedMelodyTrack || melodyDisabledReason) {
-        throw new Error(melodyDisabledReason || "Choose a melodic track first.");
+      if (!activePattern || continuationTracks.length !== 4 || melodyDisabledReason) {
+        throw new Error(melodyDisabledReason || "Add all four instruments first.");
       }
-      const source = melodySourceNotes.map(({ step, pitch, velocity, duration }) => ({ step, pitch, velocity, duration }));
+      const source = melodySourceNotes.map(({ trackId, step, pitch, velocity, duration }) => ({ trackId, step, pitch, velocity, duration }));
       const earlierStart = Math.max(0, (melodySourceBar - 4) * stepsPerBar);
-      const previous = melodyTrackNotes
-        .filter(note => note.step >= earlierStart && note.step < melodySourceBar * stepsPerBar)
-        .slice(-64)
-        .map(({ step, pitch, velocity, duration }) => ({ step, pitch, velocity, duration }));
-      const context = activeNotes
-        .filter(note => note.step >= earlierStart && note.step < (melodySourceBar + 1) * stepsPerBar &&
-          note.trackId !== selectedMelodyTrack.trackId && tracks.some(track => track.trackId === note.trackId && track.instrument !== "drums"))
-        .slice(-128)
-        .map(({ step, pitch, velocity, duration }) => ({ step, pitch, velocity, duration }));
+      const trackInputs = continuationTracks.map(track => ({
+        trackId: track.trackId,
+        instrument: track.instrument as "drums" | "bass" | "synth" | "lead",
+        sourceNotes: source.filter(note => note.trackId === track.trackId)
+          .map(({ step, pitch, velocity, duration }) => ({ step, pitch, velocity, duration }))
+          .sort((a, b) => a.step - b.step || a.pitch - b.pitch),
+        previousNotes: continuationNotes
+          .filter(note => note.trackId === track.trackId && note.step >= earlierStart &&
+            note.step < melodySourceBar * stepsPerBar)
+          .sort((a, b) => a.step - b.step || a.pitch - b.pitch)
+          .slice(-64)
+          .map(({ step, pitch, velocity, duration }) => ({ step, pitch, velocity, duration })),
+        allowedPitches: track.instrument === "drums"
+          ? DRUM_PADS.map(pad => pad.pitch)
+          : melodyGridPitches(track.instrument),
+      }));
       const snapshot: MelodyGenerationSnapshot = {
         patternId: activePattern.patternId,
-        trackId: selectedMelodyTrack.trackId,
-        trackInstrument: selectedMelodyTrack.instrument,
+        trackIds: continuationTracks.map(track => track.trackId),
+        tracks: continuationTracks.map(({ trackId, instrument }) => ({ trackId, instrument })),
         sourceBar: melodySourceBar,
         expectedNumBars: activePattern.numBars,
         expectedStepsPerBar: stepsPerBar,
         expectedSource: source,
-        contextSignature: melodyContextSignature(activeNotes, tracks, selectedMelodyTrack.trackId, melodySourceBar, stepsPerBar),
-        sourceRows: [...melodySourceNotes],
+        contextSignature: melodyContextSignature(activeNotes, tracks, continuationTracks.map(track => track.trackId), melodySourceBar, stepsPerBar),
       };
       const candidates = await generateMelodyContinuations({
-        sourceNotes: source,
-        previousNotes: previous,
-        contextNotes: context,
+        tracks: trackInputs,
         sourceBar: melodySourceBar,
         stepsPerBar,
         tempoBpm: session.tempoBpm,
-        allowedPitches: melodyGridPitches(selectedMelodyTrack.instrument),
         variationSeed: melodyVariationRef.current++,
         instruction,
       }, { signal: controller.signal });
@@ -466,7 +480,7 @@ export default function SessionView({
         setMelodyGenerating(false);
       }
     }
-  }, [activeNotes, activePattern, melodyDisabledReason, melodySourceBar, melodySourceNotes, melodyTrackNotes, selectedMelodyTrack, session.tempoBpm, stepsPerBar, stopMelodyPreview, tracks]);
+  }, [activeNotes, activePattern, continuationNotes, continuationTracks, melodyDisabledReason, melodySourceBar, melodySourceNotes, session.tempoBpm, stepsPerBar, stopMelodyPreview, tracks]);
 
   const openMelody = useCallback(() => {
     showMelodyRef.current = true;
@@ -479,13 +493,15 @@ export default function SessionView({
     stopMelodyPreview();
     setMelodyError("");
     const token = melodyPreviewTokenRef.current;
-    setPlayingCandidateId(candidate.id);
     try {
       const fromStep = snapshot.sourceBar * snapshot.expectedStepsPerBar;
       const toStep = fromStep + 5 * snapshot.expectedStepsPerBar;
-      const sourceNotes = snapshot.sourceRows;
-      const contextNotes = activeNotes.filter(note => note.trackId !== snapshot.trackId);
-      const previewNotes = notesForMelodyPreview(sourceNotes, contextNotes, effectiveTracks, snapshot.trackId, fromStep, toStep, candidate.notes);
+      if (snapshot.contextSignature !== melodyContextSignature(activeNotes, tracks, snapshot.trackIds, snapshot.sourceBar, snapshot.expectedStepsPerBar)) {
+        setMelodyError("The arrangement changed. Create suggestions again.");
+        return;
+      }
+      setPlayingCandidateId(candidate.id);
+      const previewNotes = notesForMelodyPreview(activeNotes, effectiveTracks, fromStep, toStep, candidate.notes);
       const stop = await playMelodyPreview(previewNotes, fromStep, toStep, session.tempoBpm);
       if (token !== melodyPreviewTokenRef.current) { stop(); return; }
       melodyPreviewStopRef.current = stop;
@@ -496,17 +512,18 @@ export default function SessionView({
         setMelodyError("Audio preview could not start. You can still view the notes.");
       }
     }
-  }, [activeNotes, activePattern, effectiveTracks, session.tempoBpm, stopMelodyPreview]);
+  }, [activeNotes, activePattern, effectiveTracks, session.tempoBpm, stopMelodyPreview, tracks]);
 
   const applyMelody = useCallback(async (candidate: MelodyContinuation) => {
     const snapshot = melodySnapshotRef.current;
     if (!snapshot || !melodyCandidates.some(item => item === candidate)) return;
-    if (snapshot.patternId !== activePatternId || snapshot.trackId !== selectedMelodyTrack?.trackId ||
-        snapshot.trackInstrument !== selectedMelodyTrack.instrument) {
-      setMelodyError("The selected pattern or track changed. Create suggestions again.");
+    if (snapshot.patternId !== activePatternId || snapshot.expectedStepsPerBar !== stepsPerBar ||
+        snapshot.trackIds.length !== continuationTracks.length ||
+        snapshot.trackIds.some((id, index) => id !== continuationTracks[index].trackId)) {
+      setMelodyError("The pattern or tracks changed. Create suggestions again.");
       return;
     }
-    if (snapshot.contextSignature !== melodyContextSignature(activeNotes, tracks, snapshot.trackId, snapshot.sourceBar, snapshot.expectedStepsPerBar)) {
+    if (snapshot.contextSignature !== melodyContextSignature(activeNotes, tracks, snapshot.trackIds, snapshot.sourceBar, snapshot.expectedStepsPerBar)) {
       setMelodyError("Nearby notes changed since these ideas were created. Create suggestions again.");
       return;
     }
@@ -514,12 +531,12 @@ export default function SessionView({
     setMelodyError("");
     setMelodyApplying(true);
     try {
-      await conn.reducers.applyMelodyContinuation({
+      await conn.reducers.applyArrangementContinuation({
         patternId: snapshot.patternId,
-        trackId: snapshot.trackId,
         sourceBar: snapshot.sourceBar,
         expectedNumBars: snapshot.expectedNumBars,
         expectedStepsPerBar: snapshot.expectedStepsPerBar,
+        trackIds: snapshot.trackIds,
         expectedSource: snapshot.expectedSource,
         notes: candidate.notes,
       });
@@ -529,7 +546,7 @@ export default function SessionView({
     } finally {
       setMelodyApplying(false);
     }
-  }, [activeNotes, activePatternId, closeMelody, conn, melodyCandidates, selectedMelodyTrack, stopMelodyPreview, tracks]);
+  }, [activeNotes, activePatternId, closeMelody, conn, continuationTracks, melodyCandidates, stepsPerBar, stopMelodyPreview, tracks]);
 
   useEffect(() => () => {
     melodyGenerationAbortRef.current?.abort();
@@ -579,20 +596,11 @@ export default function SessionView({
 
       <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 12px", background: "#12121c", borderBottom: "1px solid #292941", flexShrink: 0, minHeight: 42 }}>
         <span style={{ color: "#a78bfa", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>✦ Melody ideas</span>
-        <select
-          aria-label="Track to continue"
-          value={selectedMelodyTrack?.trackId ?? ""}
-          onChange={event => { setMelodyTrackId(Number(event.target.value)); closeMelody(); }}
-          disabled={melodicTracks.length === 0}
-          style={{ background: "#1c1c2a", border: "1px solid #383850", borderRadius: 5, color: "#ddddef", padding: "4px 7px", fontSize: 11, maxWidth: 130 }}
-        >
-          {melodicTracks.length === 0 && <option value="">No melodic track</option>}
-          {melodicTracks.map(track => <option key={track.trackId} value={track.trackId}>{track.instrument} track</option>)}
-        </select>
-        <button type="button" onClick={openMelody} disabled={!activePattern || !selectedMelodyTrack}
-          style={{ background: "#7455d7", border: 0, borderRadius: 6, color: "white", padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", opacity: !activePattern || !selectedMelodyTrack ? 0.45 : 1 }}>
+        <button type="button" onClick={openMelody} disabled={!activePattern}
+          style={{ background: "#7455d7", border: 0, borderRadius: 6, color: "white", padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", opacity: !activePattern ? 0.45 : 1 }}>
           Continue my melody
         </button>
+        <span style={{ fontSize: 11, color: "#a9a2c0", whiteSpace: "nowrap" }}>Drums · Bass · Synth · Lead</span>
         <span style={{ fontSize: 11, color: "#72728e", whiteSpace: "nowrap" }}>AI builds on your latest bar · adds four editable bars</span>
       </div>
 
@@ -604,7 +612,7 @@ export default function SessionView({
       )}
       {showMelody && (
         <ContinueMelodyDialog
-          trackName={`${selectedMelodyTrack?.instrument ?? "Melody"} track`}
+          tracks={melodySnapshotRef.current?.tracks ?? continuationTracks.map(({ trackId, instrument }) => ({ trackId, instrument }))}
           sourceBar={melodySnapshotRef.current?.sourceBar ?? melodySourceBar}
           stepsPerBar={melodySnapshotRef.current?.expectedStepsPerBar ?? stepsPerBar}
           sourceNoteCount={melodySnapshotRef.current?.expectedSource.length ?? melodySourceNotes.length}

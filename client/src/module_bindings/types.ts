@@ -18,6 +18,15 @@ export const ArrangementBlock = __t.object("ArrangementBlock", {
 });
 export type ArrangementBlock = __Infer<typeof ArrangementBlock>;
 
+export const ArrangementContinuationNote = __t.object("ArrangementContinuationNote", {
+  trackId: __t.u32(),
+  step: __t.u16(),
+  pitch: __t.u8(),
+  velocity: __t.u8(),
+  duration: __t.u16(),
+});
+export type ArrangementContinuationNote = __Infer<typeof ArrangementContinuationNote>;
+
 export const ContinuationNote = __t.object("ContinuationNote", {
   step: __t.u16(),
   pitch: __t.u8(),

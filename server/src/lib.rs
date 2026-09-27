@@ -64,6 +64,16 @@ pub struct ContinuationNote {
     pub duration: u16,
 }
 
+/// A continuation note assigned to one track in a four-instrument arrangement.
+#[derive(SpacetimeType, Clone, PartialEq, Eq)]
+pub struct ArrangementContinuationNote {
+    pub track_id: u32,
+    pub step: u16,
+    pub pitch: u8,
+    pub velocity: u8,
+    pub duration: u16,
+}
+
 #[table(name = user_presence, public)]
 pub struct UserPresence {
     #[primary_key] pub identity: Identity,
@@ -351,6 +361,131 @@ pub fn apply_melody_continuation(
     for note in notes {
         ctx.db.note().insert(Note {
             note_id: 0, pattern_id, track_id, step: note.step,
+            pitch: note.pitch, velocity: note.velocity, duration: note.duration,
+            creator_identity: ctx.sender,
+        });
+    }
+    Ok(())
+}
+
+/// Accept a coordinated four-track suggestion in one transaction. All source
+/// snapshots and destinations are checked before changing the pattern or notes.
+#[reducer]
+pub fn apply_arrangement_continuation(
+    ctx: &ReducerContext,
+    pattern_id: u32,
+    source_bar: u32,
+    expected_num_bars: u32,
+    expected_steps_per_bar: u32,
+    track_ids: Vec<u32>,
+    expected_source: Vec<ArrangementContinuationNote>,
+    notes: Vec<ArrangementContinuationNote>,
+) -> Result<(), String> {
+    let pattern = ctx.db.pattern().pattern_id().find(&pattern_id)
+        .ok_or("Pattern not found")?;
+    if pattern.num_bars != expected_num_bars {
+        return Err("The pattern changed. Generate a fresh continuation".to_string());
+    }
+    let required_bars = source_bar.checked_add(5).ok_or("Invalid source bar")?;
+    if source_bar >= pattern.num_bars || required_bars > 32 {
+        return Err("The selected bar cannot be continued by four bars".to_string());
+    }
+    let session = ctx.db.session().session_id().find(&pattern.session_id)
+        .ok_or("Project not found")?;
+    let steps_per_bar = match session.time_sig_bottom {
+        4 => session.time_sig_top.checked_mul(4),
+        8 => session.time_sig_top.checked_mul(2),
+        _ => None,
+    }.filter(|steps| *steps > 0 && *steps <= 64)
+        .ok_or("Unsupported time signature")?;
+    if steps_per_bar != expected_steps_per_bar {
+        return Err("The time signature changed. Generate again".to_string());
+    }
+    let source_start = source_bar * steps_per_bar;
+    let destination_start = (source_bar + 1) * steps_per_bar;
+    let destination_end = required_bars * steps_per_bar;
+    if destination_end > u16::MAX as u32 {
+        return Err("The continuation exceeds the step limit".to_string());
+    }
+    if track_ids.len() != 4 || track_ids.iter().copied().collect::<HashSet<_>>().len() != 4 {
+        return Err("Choose one track for each of the four instruments".to_string());
+    }
+    let mut instruments = HashSet::new();
+    let mut allowed_by_track = std::collections::HashMap::new();
+    for track_id in &track_ids {
+        let track = ctx.db.track().track_id().find(track_id).ok_or("Track not found")?;
+        if track.session_id != pattern.session_id || !instruments.insert(track.instrument.clone()) {
+            return Err("Choose one track for each instrument in this project".to_string());
+        }
+        let allowed: &[u8] = match track.instrument.as_str() {
+            "drums" => &[36, 38, 42, 46, 39, 37, 45, 49],
+            "bass" => &[48, 50, 52, 53, 55, 57, 59, 60],
+            "synth" | "lead" => &[60, 62, 64, 65, 67, 69, 71, 72],
+            _ => return Err("Unsupported instrument".to_string()),
+        };
+        allowed_by_track.insert(*track_id, allowed);
+    }
+    if instruments.len() != 4 || !["drums", "bass", "synth", "lead"].iter().all(|name| instruments.contains(*name)) {
+        return Err("Choose one drums, bass, synth, and lead track".to_string());
+    }
+    if expected_source.is_empty() || expected_source.len() > 256 || notes.len() < 16 || notes.len() > 256 {
+        return Err("The arrangement has an invalid number of notes".to_string());
+    }
+    let mut actual_source = Vec::new();
+    for note in ctx.db.note().pattern_id().filter(&pattern_id) {
+        if !allowed_by_track.contains_key(&note.track_id) { continue; }
+        let start = u32::from(note.step);
+        let end = start + u32::from(note.duration);
+        if start >= source_start && start < destination_start {
+            actual_source.push(ArrangementContinuationNote {
+                track_id: note.track_id, step: note.step, pitch: note.pitch,
+                velocity: note.velocity, duration: note.duration,
+            });
+        }
+        if start < destination_end && end > destination_start {
+            return Err("Another musician edited these bars. Generate again".to_string());
+        }
+    }
+    for note in &expected_source {
+        let start = u32::from(note.step);
+        if !allowed_by_track.contains_key(&note.track_id) ||
+            start < source_start || start >= destination_start ||
+            note.duration == 0 || start + u32::from(note.duration) > destination_start ||
+            note.velocity == 0 || note.velocity > 127 {
+            return Err("The source snapshot is invalid. Generate again".to_string());
+        }
+    }
+    let signature = |note: &ArrangementContinuationNote| (note.track_id, note.step, note.pitch, note.velocity, note.duration);
+    actual_source.sort_by_key(&signature);
+    let mut expected_source = expected_source;
+    expected_source.sort_by_key(&signature);
+    if actual_source != expected_source {
+        return Err("The source arrangement changed. Generate again".to_string());
+    }
+    let mut unique_notes = HashSet::new();
+    let mut covered_bars = HashSet::new();
+    for note in &notes {
+        let start = u32::from(note.step);
+        let end = start + u32::from(note.duration);
+        let allowed = allowed_by_track.get(&note.track_id)
+            .ok_or("The suggestion contains an unknown track")?;
+        if start < destination_start || start >= destination_end ||
+            note.duration == 0 || end > destination_end ||
+            !allowed.contains(&note.pitch) || note.velocity == 0 || note.velocity > 127 ||
+            !unique_notes.insert((note.track_id, note.step, note.pitch)) {
+            return Err("The continuation contains invalid or duplicate notes".to_string());
+        }
+        covered_bars.insert((note.track_id, (start - destination_start) / steps_per_bar));
+    }
+    if covered_bars.len() != 16 {
+        return Err("The suggestion must include all four instruments in each new bar".to_string());
+    }
+    if pattern.num_bars < required_bars {
+        ctx.db.pattern().pattern_id().update(Pattern { num_bars: required_bars, ..pattern });
+    }
+    for note in notes {
+        ctx.db.note().insert(Note {
+            note_id: 0, pattern_id, track_id: note.track_id, step: note.step,
             pitch: note.pitch, velocity: note.velocity, duration: note.duration,
             creator_identity: ctx.sender,
         });

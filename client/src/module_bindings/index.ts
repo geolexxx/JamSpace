@@ -36,6 +36,7 @@ import {
 // Import all reducer arg schemas
 import AddArrangementBlockReducer from "./add_arrangement_block_reducer";
 import AddNoteReducer from "./add_note_reducer";
+import ApplyArrangementContinuationReducer from "./apply_arrangement_continuation_reducer";
 import ApplyMelodyContinuationReducer from "./apply_melody_continuation_reducer";
 import ClearNotesReducer from "./clear_notes_reducer";
 import ClearPatternNotesReducer from "./clear_pattern_notes_reducer";
@@ -157,6 +158,7 @@ const tablesSchema = __schema({
 const reducersSchema = __reducers(
   __reducerSchema("add_arrangement_block", AddArrangementBlockReducer),
   __reducerSchema("add_note", AddNoteReducer),
+  __reducerSchema("apply_arrangement_continuation", ApplyArrangementContinuationReducer),
   __reducerSchema("apply_melody_continuation", ApplyMelodyContinuationReducer),
   __reducerSchema("clear_notes", ClearNotesReducer),
   __reducerSchema("clear_pattern_notes", ClearPatternNotesReducer),

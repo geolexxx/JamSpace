@@ -8,6 +8,7 @@ import { type Infer as __Infer } from "spacetimedb";
 // Import all reducer arg schemas
 import AddArrangementBlockReducer from "../add_arrangement_block_reducer";
 import AddNoteReducer from "../add_note_reducer";
+import ApplyArrangementContinuationReducer from "../apply_arrangement_continuation_reducer";
 import ApplyMelodyContinuationReducer from "../apply_melody_continuation_reducer";
 import ClearNotesReducer from "../clear_notes_reducer";
 import ClearPatternNotesReducer from "../clear_pattern_notes_reducer";
@@ -30,6 +31,7 @@ import ToggleMuteReducer from "../toggle_mute_reducer";
 
 export type AddArrangementBlockParams = __Infer<typeof AddArrangementBlockReducer>;
 export type AddNoteParams = __Infer<typeof AddNoteReducer>;
+export type ApplyArrangementContinuationParams = __Infer<typeof ApplyArrangementContinuationReducer>;
 export type ApplyMelodyContinuationParams = __Infer<typeof ApplyMelodyContinuationReducer>;
 export type ClearNotesParams = __Infer<typeof ClearNotesReducer>;
 export type ClearPatternNotesParams = __Infer<typeof ClearPatternNotesReducer>;

@@ -74,9 +74,15 @@
 .melody-candidate-copy > span { font-size: 11px; color: #aa9cb8; line-height: 1.35; }
 .melody-candidate-check { margin-left: auto; border: 1px solid #77618e; color: white; width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; text-align: center; font-size: 12px; }
 .is-selected .melody-candidate-check { background: #8750c9; border-color: #a77ee1; }
-.melody-mini-roll { position: relative; overflow: hidden; height: 37px; margin: 0 13px 7px; border-radius: 5px; background: repeating-linear-gradient(to bottom, #30273d 0, #30273d 1px, transparent 1px, transparent 8px), #1b1724; }
+.melody-mini-arrangement { display: grid; gap: 4px; margin: 0 13px 9px; }
+.melody-mini-track { display: flex; align-items: center; gap: 8px; }
+.melody-mini-track-label { width: 38px; flex: none; color: #ac9dbb; font-size: 9px; text-transform: capitalize; }
+.melody-mini-roll { position: relative; overflow: hidden; height: 18px; flex: 1; border-radius: 4px; background: #1b1724; }
 .melody-mini-roll-bar { position: absolute; top: 0; bottom: 0; width: 1px; background: #6b567f; opacity: .8; }
-.melody-mini-roll-note { position: absolute; height: 5px; min-width: 2px; border-radius: 2px; background: #b883ed; box-shadow: 0 0 5px #a56bdc99; }
+.melody-mini-roll-note { position: absolute; height: 4px; min-width: 2px; border-radius: 2px; background: #b883ed; box-shadow: 0 0 5px #a56bdc99; }
+.melody-mini-roll-drums .melody-mini-roll-note { background: #f87171; }
+.melody-mini-roll-bass .melody-mini-roll-note { background: #60a5fa; }
+.melody-mini-roll-lead .melody-mini-roll-note { background: #34d399; }
 .melody-candidate-actions { display: flex; align-items: center; justify-content: space-between; margin: 0 13px 10px; }
 .melody-candidate-actions > span { color: #8f809f; font-size: 10px; }
 .melody-candidate-actions button { border: 1px solid #6f528e; border-radius: 7px; background: #3a294e; color: #e0c8fc; cursor: pointer; padding: 5px 10px; font-size: 11px; font-weight: 700; }

@@ -13,30 +13,30 @@ export interface PreviewNote {
 }
 
 export function notesForMelodyPreview(
-  sourceNotes: readonly Note[],
-  contextNotes: readonly Note[],
+  existingNotes: readonly Note[],
   tracks: readonly Track[],
-  melodyTrackId: number,
   fromStep: number,
   toStep: number,
-  continuation: readonly { step: number; pitch: number; velocity: number; duration: number }[],
+  continuation: readonly { trackId: number; step: number; pitch: number; velocity: number; duration: number }[],
 ): PreviewNote[] {
   const trackById = new Map(tracks.map(track => [track.trackId, track]));
-  const melodicTrack = trackById.get(melodyTrackId);
-  if (!melodicTrack) return [];
-  const existing = [...sourceNotes, ...contextNotes]
+  const existing = existingNotes
     .filter(note => note.step >= fromStep && note.step < toStep)
     .map(note => {
       const track = trackById.get(note.trackId);
-      return track && (!track.isMuted || note.trackId === melodyTrackId) ? {
+      return track && !track.isMuted ? {
         step: note.step, pitch: note.pitch, velocity: note.velocity,
         duration: note.duration, instrument: track.instrument, volume: track.volume,
       } : null;
     })
     .filter((note): note is PreviewNote => note !== null);
-  existing.push(...continuation.map(note => ({
-    ...note, instrument: melodicTrack.instrument, volume: melodicTrack.volume,
-  })));
+  for (const note of continuation) {
+    const track = trackById.get(note.trackId);
+    if (track && !track.isMuted) existing.push({
+      step: note.step, pitch: note.pitch, velocity: note.velocity, duration: note.duration,
+      instrument: track.instrument, volume: track.volume,
+    });
+  }
   return existing;
 }
 

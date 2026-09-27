@@ -34,7 +34,7 @@ SpacetimeDB is the single source of truth. The server is a compiled Rust module 
 
 Audio is rendered **locally** in each browser via Tone.js, driven entirely by the synchronized table data. Nobody streams audio to anyone — each client independently sonifies the shared sequence, so playback stays in sync because the underlying state is in sync.
 
-**Continue my melody** sends the selected melody bar, up to four preceding bars, nearby melodic accompaniment and an optional short instruction to a model service. It returns three editable four-bar ideas. Preview is private; the existing SpacetimeDB reducer checks for conflicts and adds the selected notes only after the user chooses Apply. See [the feature PRD](docs/JamSpace_AI_Jam_Partner_PRD.md) for scope and remaining validation.
+**Continue my melody** sends the latest bar and up to four preceding bars from Drums, Bass, Synth, and Lead, plus an optional short instruction, to a model service. It returns three editable four-bar arrangements covering all four instruments, even when some source tracks are empty. Preview is private; one SpacetimeDB reducer checks all four tracks for conflicts and saves the selected arrangement together when the user chooses Apply. See [the feature PRD](docs/JamSpace_AI_Jam_Partner_PRD.md) for scope and remaining validation.
 
 ---
 
@@ -159,7 +159,7 @@ JamSpace/
 | Publish server changes       | `cd server && spacetime publish --server local jamspace`                                  |
 | Regenerate client bindings   | `spacetime generate --lang typescript --out-dir client/src/module_bindings --project-path server` |
 | Run the dev server           | `cd client && npm run dev`                                                                 |
-| Run the local melody AI      | `cd ai-service && OPENAI_API_KEY=your_key npm start`                                      |
+| Run the local melody AI      | Set `OPENAI_API_KEY` in the service terminal, then `cd ai-service && npm start`           |
 | Build for production         | `cd client && npm run build`                                                              |
 | Preview the production build | `cd client && npm run preview`                                                            |
 
@@ -167,7 +167,7 @@ A typical iteration when changing backend logic: edit `lib.rs` → `spacetime pu
 
 ### Melody AI setup
 
-Use Node 20 or newer. Start `ai-service` in a separate terminal with `OPENAI_API_KEY` set in that terminal's environment, then run the client dev server. The local AI service listens on `127.0.0.1:8787`; Vite forwards `/api` requests to it. `OPENAI_MODEL` optionally changes the model (default: `gpt-6-luna`). Keep the API key out of `client/` and out of Git. If the service or key is unavailable, **Continue my melody** shows an error; it does not silently generate rule-based notes. The local service is intended for development and has no project identity or per-user quota, so it must not be exposed publicly as-is.
+Use Node 20 or newer. Start `ai-service` in a separate terminal with `OPENAI_API_KEY` set in that terminal's environment, then run the client dev server. In zsh, `read -s OPENAI_API_KEY` lets you paste the key without displaying it; press Return, then run `export OPENAI_API_KEY` and `npm start`. Restart the service after changing its code. The local AI service listens on `127.0.0.1:8787`; Vite forwards `/api` requests to it. `OPENAI_MODEL` optionally changes the model (default: `gpt-6-luna`). Keep the API key out of `client/` and out of Git. If the service or key is unavailable, **Continue my melody** shows an error; it does not silently generate rule-based notes. The local service is intended for development and has no project identity or per-user quota, so it must not be exposed publicly as-is.
 
 ---
 
