@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="15 8 84 112" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Jam Space symbol</title>
+  <desc id="desc">A lavender J with a note-shaped loop interwoven with a slightly deeper violet S.</desc>
+  <defs>
+    <mask id="j-under-s" maskUnits="userSpaceOnUse" x="0" y="0" width="128" height="128">
+      <rect width="128" height="128" fill="white"/>
+      <path d="M84 47C73 37 56 38 48 47C39 57 47 65 61 71C77 78 84 86 79 98C74 110 57 112 46 103" stroke="black" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <g mask="url(#j-under-s)" stroke="#B48CF0" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M65 46C52 40 48 31 53 23C58 15 69 16 73 24C78 34 71 45 65 50V90C65 105 56 113 43 112C30 111 24 102 27 90"/>
+  </g>
+  <ellipse cx="29" cy="92" rx="8" ry="6.5" transform="rotate(-28 29 92)" fill="#B48CF0"/>
+  <path d="M84 47C73 37 56 38 48 47C39 57 47 65 61 71C77 78 84 86 79 98C74 110 57 112 46 103" stroke="#8964CF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

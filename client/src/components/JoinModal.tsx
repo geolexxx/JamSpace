@@ -94,7 +94,7 @@ export default function JoinModal({ sessions, sessionsReady, sessionsError, shar
 
   return <div className="js-workspace">
     <aside className="js-sidebar">
-      <div className="js-brand"><span className="js-brand-icon"><Icon name="music" size={21} /></span><span>JamSpace</span><span className="js-brand-version">1.1</span></div>
+      <div className="js-brand"><img className="js-brand-icon" src="/jamspace-treble-mark.png" alt="" /><span>JamSpace</span><span className="js-brand-version">1.1</span></div>
       <div className="js-sidebar-section-label">WORKSPACE</div>
       <nav aria-label="Workspace navigation" className="js-sidebar-nav">
         <button className={`js-nav-item ${sharedLink.hasLink ? "" : "js-nav-item-active"}`} onClick={sharedLink.hasLink ? onDismissSharedLink : undefined} aria-current={!sharedLink.hasLink ? "page" : undefined}><Icon name="grid" size={17} /> Projects</button>

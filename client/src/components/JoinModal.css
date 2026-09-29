@@ -26,7 +26,7 @@
   border-right: 1px solid #282631;
 }
 .js-brand { display: flex; align-items: center; gap: 10px; padding: 0 9px 35px; font-size: 19px; font-weight: 780; letter-spacing: -.04em; white-space: nowrap; }
-.js-brand-icon { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: #fff; background: linear-gradient(145deg, #a674f9, #603ccf); box-shadow: 0 4px 16px #7446dd55; }
+.js-brand-icon { width: 36px; height: 42px; display: block; flex: none; object-fit: contain; }
 .js-brand-version { margin-left: auto; padding: 3px 5px; border: 1px solid #4e386d; border-radius: 5px; color: #aa8ccf; font-size: 10px; font-weight: 700; letter-spacing: 0; }
 .js-sidebar-section-label { color: #777381; font-size: 10px; font-weight: 750; letter-spacing: .13em; padding: 0 12px 11px; }
 .js-sidebar-nav { display: flex; flex-direction: column; gap: 5px; }

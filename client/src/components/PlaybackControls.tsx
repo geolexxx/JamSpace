@@ -127,7 +127,7 @@ export default function PlaybackControls({
 
       {/* Logo */}
       <div className="transport-logo" style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-        <span style={{ fontSize: 18 }}>🎵</span>
+        <img src="/jamspace-treble-mark.png" alt="" style={{ width: 25, height: 38, objectFit: "contain" }} />
         <div style={{ fontSize: 13, fontWeight: 700, color: "#e0e0f0" }}>JamSpace</div>
       </div>
 
